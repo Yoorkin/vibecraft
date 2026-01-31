@@ -543,6 +543,31 @@ fn surface_blocks(
 }
 
 ///|
+fn bedrock_height(world : World, gx : Int, gz : Int, info : ColumnInfo) -> Int {
+  let (wx, wz) = warp_coords(gx.to_double(), gz.to_double())
+  let plate = fbm(wx * 0.0006 + 11.7, wz * 0.0006 - 4.2)
+  let plate_shift = (plate - 0.5) * 80.0
+  let sea = world.sea_level.to_double()
+  let base_floor = sea - 140.0 + plate_shift
+  let depth_limit = 120.0
+  let surface = info.height.to_double()
+  let mut bedrock = base_floor
+  let max_floor = surface - depth_limit
+  if max_floor > bedrock {
+    bedrock = max_floor
+  }
+  let mut y = bedrock.floor().to_int()
+  let max_allowed = info.height - 5
+  if y > max_allowed {
+    y = max_allowed
+  }
+  if y < 0 {
+    y = 0
+  }
+  y
+}
+
+///|
 fn generate_chunk_section(world : World, cx : Int, cy : Int, cz : Int) -> Chunk {
   let total = world.chunk_size * world.section_height * world.chunk_size
   let blocks = Array::make(total, Block::Air)
@@ -561,10 +586,11 @@ fn generate_chunk_section(world : World, cx : Int, cy : Int, cz : Int) -> Chunk 
       let ridge = info.ridge
       let moist = info.moist
       let (top_block, mid_block) = surface_blocks(world, gx, gz, info)
+      let bedrock_y = bedrock_height(world, gx, gz, info)
       for y = y0; y < y1; y = y + 1 {
         let ly = y - y0
         let idx = world.chunk_index(lx, ly, lz)
-        if y == 0 {
+        if y <= bedrock_y {
           blocks[idx] = Block::Bedrock
         } else if y < h - 4 {
           blocks[idx] = Block::Stone
