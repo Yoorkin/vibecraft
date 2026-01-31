@@ -20,6 +20,8 @@ fn build_mesh_range(
   x_end : Int,
   z_start : Int,
   z_end : Int,
+  y_start : Int,
+  y_end : Int,
 ) -> ChunkMesh {
   let solid_positions : Array[Double] = []
   let solid_colors : Array[Double] = []
@@ -31,9 +33,9 @@ fn build_mesh_range(
   let trans_colors : Array[Double] = []
   let trans_uvs : Array[Double] = []
   for z = z_start; z < z_end; z = z + 1 {
-    for y = 0; y < world.height; y = y + 1 {
+    for y = y_start; y < y_end; y = y + 1 {
       for x = x_start; x < x_end; x = x + 1 {
-        let block = world.get(x, y, z)
+        let block = world.get_range(x, y, z, y_start, y_end)
         if !block_is_air(block) {
           let is_trans = block_is_transparent(block)
           let is_cutout = block_is_cutout(block)
@@ -58,27 +60,27 @@ fn build_mesh_range(
           } else {
             solid_uvs
           }
-          let east = world.get(x + 1, y, z)
+          let east = world.get_range(x + 1, y, z, y_start, y_end)
           if face_visible(block, east) {
             append_face_east(positions, colors, uvs, x, y, z, block)
           }
-          let west = world.get(x - 1, y, z)
+          let west = world.get_range(x - 1, y, z, y_start, y_end)
           if face_visible(block, west) {
             append_face_west(positions, colors, uvs, x, y, z, block)
           }
-          let up = world.get(x, y + 1, z)
+          let up = world.get_range(x, y + 1, z, y_start, y_end)
           if face_visible(block, up) {
             append_face_up(positions, colors, uvs, x, y, z, block)
           }
-          let down = world.get(x, y - 1, z)
+          let down = world.get_range(x, y - 1, z, y_start, y_end)
           if face_visible(block, down) {
             append_face_down(positions, colors, uvs, x, y, z, block)
           }
-          let south = world.get(x, y, z + 1)
+          let south = world.get_range(x, y, z + 1, y_start, y_end)
           if face_visible(block, south) {
             append_face_south(positions, colors, uvs, x, y, z, block)
           }
-          let north = world.get(x, y, z - 1)
+          let north = world.get_range(x, y, z - 1, y_start, y_end)
           if face_visible(block, north) {
             append_face_north(positions, colors, uvs, x, y, z, block)
           }
@@ -113,6 +115,8 @@ fn build_chunk_mesh(
   cx : Int,
   cz : Int,
   chunk_size : Int,
+  y_start : Int,
+  y_end : Int,
 ) -> ChunkMesh {
   let x_start = cx * chunk_size
   let z_start = cz * chunk_size
@@ -122,6 +126,8 @@ fn build_chunk_mesh(
     x_start + chunk_size,
     z_start,
     z_start + chunk_size,
+    y_start,
+    y_end,
   )
 }
 

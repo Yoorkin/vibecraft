@@ -88,7 +88,7 @@ fn init_game() -> Unit {
   input_init(canvas)
   dom_init_fly_toggle()
   let renderer = renderer_init(canvas)
-  let world = World::new(192, 16)
+  let world = World::new(384, 16, 32)
   let chunk_size = 16
   let view_distance = 20
   let detail_distance = if view_distance > 6 {
@@ -712,6 +712,29 @@ fn in_detail_range(game : Game, cx : Int, cz : Int) -> Bool {
 }
 
 ///|
+fn clamp_int(v : Int, min_val : Int, max_val : Int) -> Int {
+  if v < min_val {
+    min_val
+  } else if v > max_val {
+    max_val
+  } else {
+    v
+  }
+}
+
+///|
+fn detail_y_bounds(game : Game) -> (Int, Int) {
+  let center = game.camera.position.y.floor().to_int()
+  let range = game.world.section_height * 3
+  let y0 = clamp_int(center - range, 0, game.world.height)
+  let mut y1 = clamp_int(center + range, 0, game.world.height)
+  if y1 <= y0 {
+    y1 = clamp_int(y0 + 1, 0, game.world.height)
+  }
+  (y0, y1)
+}
+
+///|
 fn enqueue_surface(game : Game, cx : Int, cz : Int) -> Unit {
   let key = chunk_key(cx, cz)
   match game.queued_surface.get(key) {
@@ -785,7 +808,15 @@ fn process_chunk_queue(game : Game) -> Unit {
       let key = chunk_key(cx, cz)
       match game.visible_index.get(key) {
         Some(idx) => {
-          let mesh = build_chunk_mesh(game.world, cx, cz, game.chunk_size)
+          let (y0, y1) = detail_y_bounds(game)
+          let mesh = build_chunk_mesh(
+            game.world,
+            cx,
+            cz,
+            game.chunk_size,
+            y0,
+            y1,
+          )
           game.renderer.update_chunk(idx, mesh)
           if idx >= 0 && idx < game.slot_detail.length() {
             game.slot_detail[idx] = true
@@ -969,7 +1000,15 @@ fn flush_dirty_chunks(game : Game) -> Unit {
     match game.visible_index.get(key) {
       Some(idx) =>
         if in_detail_range(game, cx, cz) {
-          let mesh = build_chunk_mesh(game.world, cx, cz, game.chunk_size)
+          let (y0, y1) = detail_y_bounds(game)
+          let mesh = build_chunk_mesh(
+            game.world,
+            cx,
+            cz,
+            game.chunk_size,
+            y0,
+            y1,
+          )
           game.renderer.update_chunk(idx, mesh)
           if idx >= 0 && idx < game.slot_detail.length() {
             game.slot_detail[idx] = true

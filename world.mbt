@@ -48,19 +48,31 @@ priv struct Chunk {
 priv struct World {
   chunk_size : Int
   height : Int
+  section_height : Int
   sea_level : Int
   chunks : @hashmap.HashMap[String, Chunk]
 }
 
 ///|
-fn World::new(height : Int, chunk_size : Int) -> World {
+fn World::new(height : Int, chunk_size : Int, section_height : Int) -> World {
   let sea_level = height / 2
-  { chunk_size, height, sea_level, chunks: @hashmap.new(capacity=64) }
+  {
+    chunk_size,
+    height,
+    section_height,
+    sea_level,
+    chunks: @hashmap.new(capacity=64),
+  }
 }
 
 ///|
 fn chunk_key(cx : Int, cz : Int) -> String {
   "\{cx},\{cz}"
+}
+
+///|
+fn chunk_key_3(cx : Int, cy : Int, cz : Int) -> String {
+  "\{cx},\{cy},\{cz}"
 }
 
 ///|
@@ -208,16 +220,21 @@ fn tree_peak(gx : Int, gz : Int, radius : Int) -> (Bool, Double) {
 
 ///|
 fn World::chunk_index(self : World, lx : Int, y : Int, lz : Int) -> Int {
-  lx + self.chunk_size * (y + self.height * lz)
+  lx + self.chunk_size * (y + self.section_height * lz)
 }
 
 ///|
-fn World::chunk_blocks(self : World, cx : Int, cz : Int) -> Array[Block] {
-  let key = chunk_key(cx, cz)
+fn World::chunk_blocks(
+  self : World,
+  cx : Int,
+  cy : Int,
+  cz : Int,
+) -> Array[Block] {
+  let key = chunk_key_3(cx, cy, cz)
   match self.chunks.get(key) {
     Some(chunk) => chunk.blocks
     None => {
-      let chunk = generate_chunk(self, cx, cz)
+      let chunk = generate_chunk_section(self, cx, cy, cz)
       self.chunks.set(key, chunk)
       chunk.blocks
     }
@@ -233,10 +250,12 @@ fn World::get(self : World, x : Int, y : Int, z : Int) -> Block {
   } else {
     let cx = div_floor(x, self.chunk_size)
     let cz = div_floor(z, self.chunk_size)
+    let cy = div_floor(y, self.section_height)
     let lx = mod_floor(x, self.chunk_size)
     let lz = mod_floor(z, self.chunk_size)
-    let blocks = self.chunk_blocks(cx, cz)
-    blocks[self.chunk_index(lx, y, lz)]
+    let ly = mod_floor(y, self.section_height)
+    let blocks = self.chunk_blocks(cx, cy, cz)
+    blocks[self.chunk_index(lx, ly, lz)]
   }
 }
 
@@ -304,11 +323,29 @@ fn World::set(self : World, x : Int, y : Int, z : Int, block : Block) -> Bool {
   } else {
     let cx = div_floor(x, self.chunk_size)
     let cz = div_floor(z, self.chunk_size)
+    let cy = div_floor(y, self.section_height)
     let lx = mod_floor(x, self.chunk_size)
     let lz = mod_floor(z, self.chunk_size)
-    let blocks = self.chunk_blocks(cx, cz)
-    blocks[self.chunk_index(lx, y, lz)] = block
+    let ly = mod_floor(y, self.section_height)
+    let blocks = self.chunk_blocks(cx, cy, cz)
+    blocks[self.chunk_index(lx, ly, lz)] = block
     true
+  }
+}
+
+///|
+fn World::get_range(
+  self : World,
+  x : Int,
+  y : Int,
+  z : Int,
+  y_min : Int,
+  y_max : Int,
+) -> Block {
+  if y < y_min || y >= y_max {
+    Block::Air
+  } else {
+    self.get(x, y, z)
   }
 }
 
@@ -506,9 +543,14 @@ fn surface_blocks(
 }
 
 ///|
-fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
-  let total = world.chunk_size * world.height * world.chunk_size
+fn generate_chunk_section(world : World, cx : Int, cy : Int, cz : Int) -> Chunk {
+  let total = world.chunk_size * world.section_height * world.chunk_size
   let blocks = Array::make(total, Block::Air)
+  let y0 = cy * world.section_height
+  let mut y1 = y0 + world.section_height
+  if y1 > world.height {
+    y1 = world.height
+  }
   for lz = 0; lz < world.chunk_size; lz = lz + 1 {
     for lx = 0; lx < world.chunk_size; lx = lx + 1 {
       let gx = cx * world.chunk_size + lx
@@ -519,8 +561,9 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
       let ridge = info.ridge
       let moist = info.moist
       let (top_block, mid_block) = surface_blocks(world, gx, gz, info)
-      for y = 0; y < world.height; y = y + 1 {
-        let idx = world.chunk_index(lx, y, lz)
+      for y = y0; y < y1; y = y + 1 {
+        let ly = y - y0
+        let idx = world.chunk_index(lx, ly, lz)
         if y == 0 {
           blocks[idx] = Block::Bedrock
         } else if y < h - 4 {
@@ -592,8 +635,8 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
           let trunk = 3 + (tree_noise * 4.0 + moist * 2.0).to_int()
           for t = 0; t < trunk; t = t + 1 {
             let y = h + t
-            if y < world.height {
-              let idx = world.chunk_index(lx, y, lz)
+            if y >= y0 && y < y1 {
+              let idx = world.chunk_index(lx, y - y0, lz)
               blocks[idx] = Block::Wood
             }
           }
@@ -606,13 +649,13 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
                   let y = leaf_start + dy
                   let lx2 = lx + dx
                   let lz2 = lz + dz
-                  if y > 0 &&
-                    y < world.height &&
+                  if y >= y0 &&
+                    y < y1 &&
                     lx2 >= 0 &&
                     lx2 < world.chunk_size &&
                     lz2 >= 0 &&
                     lz2 < world.chunk_size {
-                    let idx = world.chunk_index(lx2, y, lz2)
+                    let idx = world.chunk_index(lx2, y - y0, lz2)
                     if block_is_air(blocks[idx]) {
                       blocks[idx] = Block::Leaves
                     }
@@ -629,13 +672,13 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
                 let lx2 = lx + dx
                 let lz2 = lz + dz
                 let y = top_y
-                if y > 0 &&
-                  y < world.height &&
+                if y >= y0 &&
+                  y < y1 &&
                   lx2 >= 0 &&
                   lx2 < world.chunk_size &&
                   lz2 >= 0 &&
                   lz2 < world.chunk_size {
-                  let idx = world.chunk_index(lx2, y, lz2)
+                  let idx = world.chunk_index(lx2, y - y0, lz2)
                   if block_is_air(blocks[idx]) {
                     blocks[idx] = Block::Leaves
                   }
