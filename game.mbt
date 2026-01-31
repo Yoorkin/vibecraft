@@ -735,6 +735,46 @@ fn detail_y_bounds(game : Game) -> (Int, Int) {
 }
 
 ///|
+fn chunk_terrain_bounds(game : Game, cx : Int, cz : Int) -> (Int, Int) {
+  let mut min_h = game.world.height
+  let mut max_h = 0
+  let x0 = cx * game.chunk_size
+  let z0 = cz * game.chunk_size
+  for dz = -1; dz <= game.chunk_size; dz = dz + 1 {
+    let gz = z0 + dz
+    for dx = -1; dx <= game.chunk_size; dx = dx + 1 {
+      let gx = x0 + dx
+      let h = game.world.column_info(gx, gz).height
+      if h < min_h {
+        min_h = h
+      }
+      if h > max_h {
+        max_h = h
+      }
+    }
+  }
+  if max_h < game.world.sea_level {
+    max_h = game.world.sea_level
+  }
+  let margin = 4
+  let y0 = clamp_int(min_h - margin, 0, game.world.height)
+  let mut y1 = clamp_int(max_h + margin, 0, game.world.height)
+  if y1 <= y0 {
+    y1 = clamp_int(y0 + 1, 0, game.world.height)
+  }
+  (y0, y1)
+}
+
+///|
+fn chunk_detail_bounds(game : Game, cx : Int, cz : Int) -> (Int, Int) {
+  let (cam0, cam1) = detail_y_bounds(game)
+  let (t0, t1) = chunk_terrain_bounds(game, cx, cz)
+  let y0 = if t0 < cam0 { t0 } else { cam0 }
+  let y1 = if t1 > cam1 { t1 } else { cam1 }
+  (y0, y1)
+}
+
+///|
 fn enqueue_surface(game : Game, cx : Int, cz : Int) -> Unit {
   let key = chunk_key(cx, cz)
   match game.queued_surface.get(key) {
@@ -808,7 +848,7 @@ fn process_chunk_queue(game : Game) -> Unit {
       let key = chunk_key(cx, cz)
       match game.visible_index.get(key) {
         Some(idx) => {
-          let (y0, y1) = detail_y_bounds(game)
+          let (y0, y1) = chunk_detail_bounds(game, cx, cz)
           let mesh = build_chunk_mesh(
             game.world,
             cx,
@@ -1000,7 +1040,7 @@ fn flush_dirty_chunks(game : Game) -> Unit {
     match game.visible_index.get(key) {
       Some(idx) =>
         if in_detail_range(game, cx, cz) {
-          let (y0, y1) = detail_y_bounds(game)
+          let (y0, y1) = chunk_detail_bounds(game, cx, cz)
           let mesh = build_chunk_mesh(
             game.world,
             cx,
