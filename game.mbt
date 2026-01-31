@@ -17,14 +17,18 @@ priv struct Game {
   mut visible_index : @hashmap.HashMap[String, Int]
   mut slot_coords : Array[(Int, Int)]
   mut dirty_chunks : Array[(Int, Int)]
-  mut chunk_queue : Array[(Int, Int)]
-  mut chunk_queue_cursor : Int
-  mut queued_index : @hashmap.HashMap[String, Bool]
+  mut chunk_queue_surface : Array[(Int, Int)]
+  mut chunk_queue_surface_cursor : Int
+  mut queued_surface : @hashmap.HashMap[String, Bool]
+  mut chunk_queue_detail : Array[(Int, Int)]
+  mut chunk_queue_detail_cursor : Int
+  mut queued_detail : @hashmap.HashMap[String, Bool]
   chunk_build_budget : Int
   chunk_time_budget_ms : Double
   mut initial_loading : Bool
   mut initial_total : Int
   mut initial_built : Int
+  detail_distance : Int
   camera : Camera
   mut player_height : Double
   mut last_time : Double
@@ -33,6 +37,7 @@ priv struct Game {
   mut sprint_latch : Bool
   mut selected_block : Block
   mut selected_slot : Int
+  mut slot_detail : Array[Bool]
   mut particles : Array[Particle]
   mut rng_state : Int
 }
@@ -86,6 +91,11 @@ fn init_game() -> Unit {
   let world = World::new(192, 16)
   let chunk_size = 16
   let view_distance = 20
+  let detail_distance = if view_distance > 6 {
+    view_distance / 2
+  } else {
+    view_distance
+  }
   let visible_capacity = (2 * view_distance + 1) * (2 * view_distance + 1) * 2 +
     1
   let spawn_pos = find_spawn(world)
@@ -104,14 +114,18 @@ fn init_game() -> Unit {
     visible_index: @hashmap.new(capacity=visible_capacity),
     slot_coords: [],
     dirty_chunks: [],
-    chunk_queue: [],
-    chunk_queue_cursor: 0,
-    queued_index: @hashmap.new(capacity=visible_capacity),
+    chunk_queue_surface: [],
+    chunk_queue_surface_cursor: 0,
+    queued_surface: @hashmap.new(capacity=visible_capacity),
+    chunk_queue_detail: [],
+    chunk_queue_detail_cursor: 0,
+    queued_detail: @hashmap.new(capacity=visible_capacity),
     chunk_build_budget: 2,
     chunk_time_budget_ms: 5.0,
     initial_loading: true,
     initial_total: 0,
     initial_built: 0,
+    detail_distance,
     camera,
     player_height: standing_height(),
     last_time: dom_now_ms(),
@@ -120,6 +134,7 @@ fn init_game() -> Unit {
     sprint_latch: false,
     selected_block: Block::Dirt,
     selected_slot: 1,
+    slot_detail: [],
     particles: [],
     rng_state: 1337,
   }
@@ -690,13 +705,32 @@ fn empty_chunk_mesh() -> ChunkMesh {
 }
 
 ///|
-fn enqueue_chunk(game : Game, cx : Int, cz : Int) -> Unit {
+fn in_detail_range(game : Game, cx : Int, cz : Int) -> Bool {
+  let dx = (cx - game.current_cx).abs()
+  let dz = (cz - game.current_cz).abs()
+  dx <= game.detail_distance && dz <= game.detail_distance
+}
+
+///|
+fn enqueue_surface(game : Game, cx : Int, cz : Int) -> Unit {
   let key = chunk_key(cx, cz)
-  match game.queued_index.get(key) {
+  match game.queued_surface.get(key) {
     Some(_) => ()
     None => {
-      game.queued_index.set(key, true)
-      game.chunk_queue.push((cx, cz))
+      game.queued_surface.set(key, true)
+      game.chunk_queue_surface.push((cx, cz))
+    }
+  }
+}
+
+///|
+fn enqueue_detail(game : Game, cx : Int, cz : Int) -> Unit {
+  let key = chunk_key(cx, cz)
+  match game.queued_detail.get(key) {
+    Some(_) => ()
+    None => {
+      game.queued_detail.set(key, true)
+      game.chunk_queue_detail.push((cx, cz))
     }
   }
 }
@@ -706,43 +740,81 @@ fn process_chunk_queue(game : Game) -> Unit {
   let mut built = 0
   let budget = game.chunk_build_budget
   let start = dom_now_ms()
-  while built < budget && game.chunk_queue_cursor < game.chunk_queue.length() {
-    let (cx, cz) = game.chunk_queue[game.chunk_queue_cursor]
-    game.chunk_queue_cursor = game.chunk_queue_cursor + 1
-    let key = chunk_key(cx, cz)
-    match game.visible_index.get(key) {
-      Some(idx) => {
-        let mesh = build_chunk_mesh(game.world, cx, cz, game.chunk_size)
-        game.renderer.update_chunk(idx, mesh)
+  while built < budget {
+    let mut did_work = false
+    if game.chunk_queue_surface_cursor < game.chunk_queue_surface.length() {
+      let (cx, cz) = game.chunk_queue_surface[game.chunk_queue_surface_cursor]
+      game.chunk_queue_surface_cursor = game.chunk_queue_surface_cursor + 1
+      let key = chunk_key(cx, cz)
+      match game.visible_index.get(key) {
+        Some(idx) => {
+          let mesh = build_chunk_surface_mesh(
+            game.world,
+            cx,
+            cz,
+            game.chunk_size,
+          )
+          game.renderer.update_chunk(idx, mesh)
+          if idx >= 0 && idx < game.slot_detail.length() {
+            game.slot_detail[idx] = false
+          }
+        }
+        None => ()
       }
-      None => ()
-    }
-    game.queued_index.remove(key)
-    if game.initial_loading {
-      game.initial_built = game.initial_built + 1
-      if game.initial_total > 0 {
-        let progress = game.initial_built.to_double() /
-          game.initial_total.to_double()
-        if progress >= 1.0 {
+      game.queued_surface.remove(key)
+      if game.initial_loading {
+        game.initial_built = game.initial_built + 1
+        if game.initial_total > 0 {
+          let progress = game.initial_built.to_double() /
+            game.initial_total.to_double()
+          if progress >= 1.0 {
+            game.initial_loading = false
+            dom_set_loading(1.0)
+          } else {
+            dom_set_loading(progress)
+          }
+        } else {
           game.initial_loading = false
           dom_set_loading(1.0)
-        } else {
-          dom_set_loading(progress)
         }
-      } else {
-        game.initial_loading = false
-        dom_set_loading(1.0)
       }
+      did_work = true
+    } else if game.chunk_queue_detail_cursor < game.chunk_queue_detail.length() {
+      let (cx, cz) = game.chunk_queue_detail[game.chunk_queue_detail_cursor]
+      game.chunk_queue_detail_cursor = game.chunk_queue_detail_cursor + 1
+      let key = chunk_key(cx, cz)
+      match game.visible_index.get(key) {
+        Some(idx) => {
+          let mesh = build_chunk_mesh(game.world, cx, cz, game.chunk_size)
+          game.renderer.update_chunk(idx, mesh)
+          if idx >= 0 && idx < game.slot_detail.length() {
+            game.slot_detail[idx] = true
+          }
+        }
+        None => ()
+      }
+      game.queued_detail.remove(key)
+      did_work = true
+    }
+    if !did_work {
+      break
     }
     built = built + 1
     if dom_now_ms() - start >= game.chunk_time_budget_ms {
       break
     }
   }
-  if game.chunk_queue_cursor >= game.chunk_queue.length() {
-    game.chunk_queue = []
-    game.chunk_queue_cursor = 0
-    game.queued_index = @hashmap.new(
+  if game.chunk_queue_surface_cursor >= game.chunk_queue_surface.length() {
+    game.chunk_queue_surface = []
+    game.chunk_queue_surface_cursor = 0
+    game.queued_surface = @hashmap.new(
+      capacity=game.visible_index.length() * 2 + 1,
+    )
+  }
+  if game.chunk_queue_detail_cursor >= game.chunk_queue_detail.length() {
+    game.chunk_queue_detail = []
+    game.chunk_queue_detail_cursor = 0
+    game.queued_detail = @hashmap.new(
       capacity=game.visible_index.length() * 2 + 1,
     )
   }
@@ -768,17 +840,24 @@ fn refresh_visible_chunks(game : Game) -> Unit {
       game.visible_index.set(key, i)
     }
     game.slot_coords = coords
+    game.slot_detail = Array::make(coords.length(), false)
     game.dirty_chunks = []
-    game.chunk_queue = []
-    game.chunk_queue_cursor = 0
-    game.queued_index = @hashmap.new(capacity=coords.length() * 2 + 1)
+    game.chunk_queue_surface = []
+    game.chunk_queue_surface_cursor = 0
+    game.queued_surface = @hashmap.new(capacity=coords.length() * 2 + 1)
+    game.chunk_queue_detail = []
+    game.chunk_queue_detail_cursor = 0
+    game.queued_detail = @hashmap.new(capacity=coords.length() * 2 + 1)
     game.initial_loading = true
     game.initial_total = coords.length()
     game.initial_built = 0
     dom_set_loading(0.0)
     for i = 0; i < coords.length(); i = i + 1 {
       let (cx, cz) = coords[i]
-      enqueue_chunk(game, cx, cz)
+      enqueue_surface(game, cx, cz)
+      if in_detail_range(game, cx, cz) {
+        enqueue_detail(game, cx, cz)
+      }
     }
     return
   }
@@ -787,20 +866,39 @@ fn refresh_visible_chunks(game : Game) -> Unit {
     let (cx, cz) = coords[i]
     visible_set.set(chunk_key(cx, cz), true)
   }
-  let pending_queue : Array[(Int, Int)] = []
-  for i = game.chunk_queue_cursor; i < game.chunk_queue.length(); i = i + 1 {
-    let (cx, cz) = game.chunk_queue[i]
+  let pending_surface : Array[(Int, Int)] = []
+  for i = game.chunk_queue_surface_cursor
+      i < game.chunk_queue_surface.length()
+      i = i + 1 {
+    let (cx, cz) = game.chunk_queue_surface[i]
     let key = chunk_key(cx, cz)
     if visible_set.contains(key) {
-      pending_queue.push((cx, cz))
+      pending_surface.push((cx, cz))
     }
   }
-  game.chunk_queue = pending_queue
-  game.chunk_queue_cursor = 0
-  game.queued_index = @hashmap.new(capacity=coords.length() * 2 + 1)
-  for i = 0; i < game.chunk_queue.length(); i = i + 1 {
-    let (cx, cz) = game.chunk_queue[i]
-    game.queued_index.set(chunk_key(cx, cz), true)
+  game.chunk_queue_surface = pending_surface
+  game.chunk_queue_surface_cursor = 0
+  game.queued_surface = @hashmap.new(capacity=coords.length() * 2 + 1)
+  for i = 0; i < game.chunk_queue_surface.length(); i = i + 1 {
+    let (cx, cz) = game.chunk_queue_surface[i]
+    game.queued_surface.set(chunk_key(cx, cz), true)
+  }
+  let pending_detail : Array[(Int, Int)] = []
+  for i = game.chunk_queue_detail_cursor
+      i < game.chunk_queue_detail.length()
+      i = i + 1 {
+    let (cx, cz) = game.chunk_queue_detail[i]
+    let key = chunk_key(cx, cz)
+    if visible_set.contains(key) {
+      pending_detail.push((cx, cz))
+    }
+  }
+  game.chunk_queue_detail = pending_detail
+  game.chunk_queue_detail_cursor = 0
+  game.queued_detail = @hashmap.new(capacity=coords.length() * 2 + 1)
+  for i = 0; i < game.chunk_queue_detail.length(); i = i + 1 {
+    let (cx, cz) = game.chunk_queue_detail[i]
+    game.queued_detail.set(chunk_key(cx, cz), true)
   }
   let next_index = @hashmap.new(capacity=coords.length() * 2 + 1)
   let used = Array::make(game.slot_coords.length(), false)
@@ -832,11 +930,32 @@ fn refresh_visible_chunks(game : Game) -> Unit {
     let (cx, cz) = pending[i]
     game.renderer.update_chunk(idx, empty_chunk_mesh())
     game.slot_coords[idx] = (cx, cz)
+    if idx >= 0 && idx < game.slot_detail.length() {
+      game.slot_detail[idx] = false
+    }
     let key = chunk_key(cx, cz)
     next_index.set(key, idx)
-    enqueue_chunk(game, cx, cz)
+    enqueue_surface(game, cx, cz)
+    if in_detail_range(game, cx, cz) {
+      enqueue_detail(game, cx, cz)
+    }
   }
   game.visible_index = next_index
+  for i = 0; i < coords.length(); i = i + 1 {
+    let (cx, cz) = coords[i]
+    let key = chunk_key(cx, cz)
+    match game.visible_index.get(key) {
+      Some(idx) => {
+        let want_detail = in_detail_range(game, cx, cz)
+        if want_detail && !game.slot_detail[idx] {
+          enqueue_detail(game, cx, cz)
+        } else if !want_detail && game.slot_detail[idx] {
+          enqueue_surface(game, cx, cz)
+        }
+      }
+      None => ()
+    }
+  }
 }
 
 ///|
@@ -848,10 +967,25 @@ fn flush_dirty_chunks(game : Game) -> Unit {
     let (cx, cz) = game.dirty_chunks[i]
     let key = chunk_key(cx, cz)
     match game.visible_index.get(key) {
-      Some(idx) => {
-        let mesh = build_chunk_mesh(game.world, cx, cz, game.chunk_size)
-        game.renderer.update_chunk(idx, mesh)
-      }
+      Some(idx) =>
+        if in_detail_range(game, cx, cz) {
+          let mesh = build_chunk_mesh(game.world, cx, cz, game.chunk_size)
+          game.renderer.update_chunk(idx, mesh)
+          if idx >= 0 && idx < game.slot_detail.length() {
+            game.slot_detail[idx] = true
+          }
+        } else {
+          let mesh = build_chunk_surface_mesh(
+            game.world,
+            cx,
+            cz,
+            game.chunk_size,
+          )
+          game.renderer.update_chunk(idx, mesh)
+          if idx >= 0 && idx < game.slot_detail.length() {
+            game.slot_detail[idx] = false
+          }
+        }
       None => ()
     }
   }

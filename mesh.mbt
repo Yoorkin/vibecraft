@@ -126,6 +126,111 @@ fn build_chunk_mesh(
 }
 
 ///|
+fn build_chunk_surface_mesh(
+  world : World,
+  cx : Int,
+  cz : Int,
+  chunk_size : Int,
+) -> ChunkMesh {
+  let solid_positions : Array[Double] = []
+  let solid_colors : Array[Double] = []
+  let solid_uvs : Array[Double] = []
+  let trans_positions : Array[Double] = []
+  let trans_colors : Array[Double] = []
+  let trans_uvs : Array[Double] = []
+  let total = chunk_size * chunk_size
+  let heights = Array::make(total, 0)
+  let blocks = Array::make(total, Block::Air)
+  for z = 0; z < chunk_size; z = z + 1 {
+    for x = 0; x < chunk_size; x = x + 1 {
+      let gx = cx * chunk_size + x
+      let gz = cz * chunk_size + z
+      let info = world.column_info(gx, gz)
+      let h = info.height
+      let (top_block, _) = surface_blocks(world, gx, gz, info)
+      let idx = x + z * chunk_size
+      if h <= world.sea_level {
+        heights[idx] = world.sea_level
+        blocks[idx] = Block::Water
+      } else {
+        heights[idx] = h
+        blocks[idx] = top_block
+      }
+    }
+  }
+  let used = Array::make(total, false)
+  for z = 0; z < chunk_size; z = z + 1 {
+    for x = 0; x < chunk_size; x = x + 1 {
+      let idx = x + z * chunk_size
+      if used[idx] {
+        continue
+      }
+      let block = blocks[idx]
+      if block_is_air(block) {
+        continue
+      }
+      let height = heights[idx]
+      let mut w = 1
+      while x + w < chunk_size {
+        let idx2 = x + w + z * chunk_size
+        if used[idx2] || blocks[idx2] != block || heights[idx2] != height {
+          break
+        }
+        w = w + 1
+      }
+      let mut d = 1
+      while z + d < chunk_size {
+        let mut ok = true
+        for dx = 0; dx < w; dx = dx + 1 {
+          let idx2 = x + dx + (z + d) * chunk_size
+          if used[idx2] || blocks[idx2] != block || heights[idx2] != height {
+            ok = false
+            break
+          }
+        }
+        if !ok {
+          break
+        }
+        d = d + 1
+      }
+      for dz = 0; dz < d; dz = dz + 1 {
+        for dx = 0; dx < w; dx = dx + 1 {
+          used[x + dx + (z + dz) * chunk_size] = true
+        }
+      }
+      let x0 = (cx * chunk_size + x).to_double()
+      let x1 = (cx * chunk_size + x + w).to_double()
+      let z0 = (cz * chunk_size + z).to_double()
+      let z1 = (cz * chunk_size + z + d).to_double()
+      let y = height.to_double()
+      if block_is_transparent(block) {
+        append_face_up_rect(
+          trans_positions, trans_colors, trans_uvs, x0, x1, z0, z1, y, block,
+        )
+      } else {
+        append_face_up_rect(
+          solid_positions, solid_colors, solid_uvs, x0, x1, z0, z1, y, block,
+        )
+      }
+    }
+  }
+  let solid = {
+    positions: solid_positions,
+    colors: solid_colors,
+    uvs: solid_uvs,
+    vertex_count: solid_positions.length() / 3,
+  }
+  let cutout = { positions: [], colors: [], uvs: [], vertex_count: 0 }
+  let trans = {
+    positions: trans_positions,
+    colors: trans_colors,
+    uvs: trans_uvs,
+    vertex_count: trans_positions.length() / 3,
+  }
+  { solid, cutout, trans }
+}
+
+///|
 fn face_visible(block : Block, neighbor : Block) -> Bool {
   if block_is_air(block) {
     false
@@ -322,6 +427,27 @@ fn append_face_up(
   push_quad(
     positions, colors, uvs, x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0, c, u0,
     v0, u1, v1,
+  )
+}
+
+///|
+fn append_face_up_rect(
+  positions : Array[Double],
+  colors : Array[Double],
+  uvs : Array[Double],
+  x0 : Double,
+  x1 : Double,
+  z0 : Double,
+  z1 : Double,
+  y : Double,
+  block : Block,
+) -> Unit {
+  let c = block_tint(block, 2)
+  let (tx, ty) = tile_for_face(block, 2)
+  let (u0, v0, u1, v1) = tile_uv(tx, ty)
+  push_quad(
+    positions, colors, uvs, x0, y, z0, x0, y, z1, x1, y, z1, x1, y, z0, c, u0, v0,
+    u1, v1,
   )
 }
 

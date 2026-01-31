@@ -15,7 +15,7 @@ priv enum Block {
   Gravel
   Clay
   Snow
-}
+} derive(Eq)
 
 ///|
 priv enum Biome {
@@ -425,6 +425,87 @@ fn World::height_at(self : World, x : Int, z : Int) -> Int {
 }
 
 ///|
+fn surface_blocks(
+  world : World,
+  gx : Int,
+  gz : Int,
+  info : ColumnInfo,
+) -> (Block, Block) {
+  let h = info.height
+  let biome = info.biome
+  let ridge = info.ridge
+  let moist = info.moist
+  let mut top_block = match biome {
+    Biome::Ocean => Block::Sand
+    Biome::Desert => Block::Sand
+    Biome::Mesa => Block::Sand
+    Biome::Mountains => Block::Stone
+    Biome::Hills => Block::Grass
+    Biome::Forest => Block::Grass
+    Biome::Plains => Block::Grass
+    Biome::River => Block::Sand
+    Biome::Snow => Block::Snow
+    Biome::Karst => Block::Stone
+  }
+  let mut mid_block = match biome {
+    Biome::Ocean => Block::Sand
+    Biome::Desert => Block::Sand
+    Biome::Mesa => Block::Sand
+    Biome::Mountains => Block::Stone
+    Biome::Hills => Block::Dirt
+    Biome::Forest => Block::Dirt
+    Biome::Plains => Block::Dirt
+    Biome::River => Block::Clay
+    Biome::Snow => Block::Stone
+    Biome::Karst => Block::Stone
+  }
+  let is_shore = h <= world.sea_level + 1
+  if is_shore {
+    top_block = Block::Sand
+    mid_block = Block::Sand
+  }
+  let sea = world.sea_level
+  if biome == Biome::Mountains {
+    if h > sea + 30 {
+      top_block = Block::Stone
+      mid_block = Block::Stone
+    } else {
+      top_block = Block::Grass
+      mid_block = Block::Dirt
+    }
+  }
+  if biome != Biome::Snow && ridge > 0.88 && h > sea + 28 {
+    top_block = Block::Stone
+    mid_block = Block::Stone
+  }
+  let snow_line = sea + 34
+  if h >= snow_line {
+    top_block = Block::Snow
+    mid_block = Block::Stone
+  }
+  let surface_noise = fbm(
+    gx.to_double() * 0.06 + 2.1,
+    gz.to_double() * 0.06 - 3.7,
+  )
+  let is_stony = match top_block {
+    Block::Stone => true
+    _ => false
+  }
+  let allow_soil = biome != Biome::Snow && h > world.sea_level + 2
+  if is_stony && allow_soil {
+    let karst_limit = if biome == Biome::Karst { 0.62 } else { 0.45 }
+    if surface_noise > karst_limit && moist > 0.3 {
+      top_block = Block::Grass
+      mid_block = Block::Dirt
+    } else if surface_noise > 0.38 {
+      top_block = Block::Dirt
+      mid_block = Block::Dirt
+    }
+  }
+  (top_block, mid_block)
+}
+
+///|
 fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
   let total = world.chunk_size * world.height * world.chunk_size
   let blocks = Array::make(total, Block::Air)
@@ -437,73 +518,7 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
       let biome = info.biome
       let ridge = info.ridge
       let moist = info.moist
-      let mut top_block = match biome {
-        Biome::Ocean => Block::Sand
-        Biome::Desert => Block::Sand
-        Biome::Mesa => Block::Sand
-        Biome::Mountains => Block::Stone
-        Biome::Hills => Block::Grass
-        Biome::Forest => Block::Grass
-        Biome::Plains => Block::Grass
-        Biome::River => Block::Sand
-        Biome::Snow => Block::Snow
-        Biome::Karst => Block::Stone
-      }
-      let mut mid_block = match biome {
-        Biome::Ocean => Block::Sand
-        Biome::Desert => Block::Sand
-        Biome::Mesa => Block::Sand
-        Biome::Mountains => Block::Stone
-        Biome::Hills => Block::Dirt
-        Biome::Forest => Block::Dirt
-        Biome::Plains => Block::Dirt
-        Biome::River => Block::Clay
-        Biome::Snow => Block::Stone
-        Biome::Karst => Block::Stone
-      }
-      let is_shore = h <= world.sea_level + 1
-      if is_shore {
-        top_block = Block::Sand
-        mid_block = Block::Sand
-      }
-      let sea = world.sea_level
-      if biome == Biome::Mountains {
-        if h > sea + 30 {
-          top_block = Block::Stone
-          mid_block = Block::Stone
-        } else {
-          top_block = Block::Grass
-          mid_block = Block::Dirt
-        }
-      }
-      if biome != Biome::Snow && ridge > 0.88 && h > sea + 28 {
-        top_block = Block::Stone
-        mid_block = Block::Stone
-      }
-      let snow_line = sea + 34
-      if h >= snow_line {
-        top_block = Block::Snow
-        mid_block = Block::Stone
-      }
-      let surface_noise = fbm(
-        gx.to_double() * 0.06 + 2.1,
-        gz.to_double() * 0.06 - 3.7,
-      )
-      let is_stony = match top_block {
-        Block::Stone => true
-        _ => false
-      }
-      let allow_soil = biome != Biome::Snow && h > world.sea_level + 2
-      if is_stony && allow_soil {
-        let karst_limit = if biome == Biome::Karst { 0.62 } else { 0.45 }
-        if surface_noise > karst_limit && moist > 0.3 {
-          top_block = Block::Grass
-          mid_block = Block::Dirt
-        } else if surface_noise > 0.38 {
-          top_block = Block::Dirt
-          mid_block = Block::Dirt
-        }
-      }
+      let (top_block, mid_block) = surface_blocks(world, gx, gz, info)
       for y = 0; y < world.height; y = y + 1 {
         let idx = world.chunk_index(lx, y, lz)
         if y == 0 {
