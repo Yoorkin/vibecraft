@@ -21,6 +21,7 @@ priv struct Game {
   mut chunk_queue_cursor : Int
   mut queued_index : @hashmap.HashMap[String, Bool]
   chunk_build_budget : Int
+  chunk_time_budget_ms : Double
   mut initial_loading : Bool
   mut initial_total : Int
   mut initial_built : Int
@@ -84,7 +85,7 @@ fn init_game() -> Unit {
   let renderer = renderer_init(canvas)
   let world = World::new(192, 16)
   let chunk_size = 16
-  let view_distance = 10
+  let view_distance = 20
   let visible_capacity = (2 * view_distance + 1) * (2 * view_distance + 1) * 2 +
     1
   let spawn_pos = find_spawn(world)
@@ -106,7 +107,8 @@ fn init_game() -> Unit {
     chunk_queue: [],
     chunk_queue_cursor: 0,
     queued_index: @hashmap.new(capacity=visible_capacity),
-    chunk_build_budget: 4,
+    chunk_build_budget: 2,
+    chunk_time_budget_ms: 5.0,
     initial_loading: true,
     initial_total: 0,
     initial_built: 0,
@@ -703,6 +705,7 @@ fn enqueue_chunk(game : Game, cx : Int, cz : Int) -> Unit {
 fn process_chunk_queue(game : Game) -> Unit {
   let mut built = 0
   let budget = game.chunk_build_budget
+  let start = dom_now_ms()
   while built < budget && game.chunk_queue_cursor < game.chunk_queue.length() {
     let (cx, cz) = game.chunk_queue[game.chunk_queue_cursor]
     game.chunk_queue_cursor = game.chunk_queue_cursor + 1
@@ -732,6 +735,9 @@ fn process_chunk_queue(game : Game) -> Unit {
       }
     }
     built = built + 1
+    if dom_now_ms() - start >= game.chunk_time_budget_ms {
+      break
+    }
   }
   if game.chunk_queue_cursor >= game.chunk_queue.length() {
     game.chunk_queue = []
