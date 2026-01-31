@@ -82,7 +82,7 @@ fn init_game() -> Unit {
   input_init(canvas)
   dom_init_fly_toggle()
   let renderer = renderer_init(canvas)
-  let world = World::new(96, 16)
+  let world = World::new(192, 16)
   let chunk_size = 16
   let view_distance = 10
   let visible_capacity = (2 * view_distance + 1) * (2 * view_distance + 1) * 2 +
