@@ -147,6 +147,17 @@ fn build_chunk_surface_mesh(
   let total = chunk_size * chunk_size
   let heights = Array::make(total, 0)
   let blocks = Array::make(total, Block::Air)
+  fn surface_height_block(world : World, gx : Int, gz : Int) -> (Int, Block) {
+    let info = world.column_info(gx, gz)
+    let h = info.height
+    let (top_block, _) = surface_blocks(world, gx, gz, info)
+    if h <= world.sea_level {
+      (world.sea_level, Block::Water)
+    } else {
+      (h, top_block)
+    }
+  }
+
   for z = 0; z < chunk_size; z = z + 1 {
     for x = 0; x < chunk_size; x = x + 1 {
       let gx = cx * chunk_size + x
@@ -216,6 +227,154 @@ fn build_chunk_surface_mesh(
       } else {
         append_face_up_rect(
           solid_positions, solid_colors, solid_uvs, x0, x1, z0, z1, y, block,
+        )
+      }
+    }
+  }
+  for z = 0; z < chunk_size; z = z + 1 {
+    for x = 0; x < chunk_size; x = x + 1 {
+      let idx = x + z * chunk_size
+      let block = blocks[idx]
+      if block_is_air(block) {
+        continue
+      }
+      let height = heights[idx]
+      let gx = cx * chunk_size + x
+      let gz = cz * chunk_size + z
+      let (h_east, _) = if x + 1 < chunk_size {
+        let idx2 = x + 1 + z * chunk_size
+        (heights[idx2], blocks[idx2])
+      } else {
+        surface_height_block(world, gx + 1, gz)
+      }
+      if height > h_east {
+        let x0 = (gx + 1).to_double()
+        let z0 = gz.to_double()
+        let z1 = (gz + 1).to_double()
+        append_face_east_rect(
+          if block_is_transparent(block) {
+            trans_positions
+          } else {
+            solid_positions
+          },
+          if block_is_transparent(block) {
+            trans_colors
+          } else {
+            solid_colors
+          },
+          if block_is_transparent(block) {
+            trans_uvs
+          } else {
+            solid_uvs
+          },
+          x0,
+          z0,
+          z1,
+          h_east.to_double(),
+          height.to_double(),
+          block,
+        )
+      }
+      let (h_west, _) = if x > 0 {
+        let idx2 = x - 1 + z * chunk_size
+        (heights[idx2], blocks[idx2])
+      } else {
+        surface_height_block(world, gx - 1, gz)
+      }
+      if height > h_west {
+        let x0 = gx.to_double()
+        let z0 = gz.to_double()
+        let z1 = (gz + 1).to_double()
+        append_face_west_rect(
+          if block_is_transparent(block) {
+            trans_positions
+          } else {
+            solid_positions
+          },
+          if block_is_transparent(block) {
+            trans_colors
+          } else {
+            solid_colors
+          },
+          if block_is_transparent(block) {
+            trans_uvs
+          } else {
+            solid_uvs
+          },
+          x0,
+          z0,
+          z1,
+          h_west.to_double(),
+          height.to_double(),
+          block,
+        )
+      }
+      let (h_south, _) = if z + 1 < chunk_size {
+        let idx2 = x + (z + 1) * chunk_size
+        (heights[idx2], blocks[idx2])
+      } else {
+        surface_height_block(world, gx, gz + 1)
+      }
+      if height > h_south {
+        let x0 = gx.to_double()
+        let x1 = (gx + 1).to_double()
+        let z0 = (gz + 1).to_double()
+        append_face_south_rect(
+          if block_is_transparent(block) {
+            trans_positions
+          } else {
+            solid_positions
+          },
+          if block_is_transparent(block) {
+            trans_colors
+          } else {
+            solid_colors
+          },
+          if block_is_transparent(block) {
+            trans_uvs
+          } else {
+            solid_uvs
+          },
+          x0,
+          x1,
+          z0,
+          h_south.to_double(),
+          height.to_double(),
+          block,
+        )
+      }
+      let (h_north, _) = if z > 0 {
+        let idx2 = x + (z - 1) * chunk_size
+        (heights[idx2], blocks[idx2])
+      } else {
+        surface_height_block(world, gx, gz - 1)
+      }
+      if height > h_north {
+        let x0 = gx.to_double()
+        let x1 = (gx + 1).to_double()
+        let z0 = gz.to_double()
+        append_face_north_rect(
+          if block_is_transparent(block) {
+            trans_positions
+          } else {
+            solid_positions
+          },
+          if block_is_transparent(block) {
+            trans_colors
+          } else {
+            solid_colors
+          },
+          if block_is_transparent(block) {
+            trans_uvs
+          } else {
+            solid_uvs
+          },
+          x0,
+          x1,
+          z0,
+          h_north.to_double(),
+          height.to_double(),
+          block,
         )
       }
     }
@@ -453,6 +612,90 @@ fn append_face_up_rect(
   let (u0, v0, u1, v1) = tile_uv(tx, ty)
   push_quad(
     positions, colors, uvs, x0, y, z0, x0, y, z1, x1, y, z1, x1, y, z0, c, u0, v0,
+    u1, v1,
+  )
+}
+
+///|
+fn append_face_east_rect(
+  positions : Array[Double],
+  colors : Array[Double],
+  uvs : Array[Double],
+  x : Double,
+  z0 : Double,
+  z1 : Double,
+  y0 : Double,
+  y1 : Double,
+  block : Block,
+) -> Unit {
+  let c = block_tint(block, 0)
+  let (tx, ty) = tile_for_face(block, 0)
+  let (u0, v0, u1, v1) = tile_uv(tx, ty)
+  push_quad(
+    positions, colors, uvs, x, y0, z0, x, y0, z1, x, y1, z1, x, y1, z0, c, u0, v0,
+    u1, v1,
+  )
+}
+
+///|
+fn append_face_west_rect(
+  positions : Array[Double],
+  colors : Array[Double],
+  uvs : Array[Double],
+  x : Double,
+  z0 : Double,
+  z1 : Double,
+  y0 : Double,
+  y1 : Double,
+  block : Block,
+) -> Unit {
+  let c = block_tint(block, 1)
+  let (tx, ty) = tile_for_face(block, 1)
+  let (u0, v0, u1, v1) = tile_uv(tx, ty)
+  push_quad(
+    positions, colors, uvs, x, y0, z1, x, y0, z0, x, y1, z0, x, y1, z1, c, u0, v0,
+    u1, v1,
+  )
+}
+
+///|
+fn append_face_south_rect(
+  positions : Array[Double],
+  colors : Array[Double],
+  uvs : Array[Double],
+  x0 : Double,
+  x1 : Double,
+  z : Double,
+  y0 : Double,
+  y1 : Double,
+  block : Block,
+) -> Unit {
+  let c = block_tint(block, 4)
+  let (tx, ty) = tile_for_face(block, 4)
+  let (u0, v0, u1, v1) = tile_uv(tx, ty)
+  push_quad(
+    positions, colors, uvs, x0, y0, z, x1, y0, z, x1, y1, z, x0, y1, z, c, u0, v0,
+    u1, v1,
+  )
+}
+
+///|
+fn append_face_north_rect(
+  positions : Array[Double],
+  colors : Array[Double],
+  uvs : Array[Double],
+  x0 : Double,
+  x1 : Double,
+  z : Double,
+  y0 : Double,
+  y1 : Double,
+  block : Block,
+) -> Unit {
+  let c = block_tint(block, 5)
+  let (tx, ty) = tile_for_face(block, 5)
+  let (u0, v0, u1, v1) = tile_uv(tx, ty)
+  push_quad(
+    positions, colors, uvs, x1, y0, z, x0, y0, z, x0, y1, z, x1, y1, z, c, u0, v0,
     u1, v1,
   )
 }
