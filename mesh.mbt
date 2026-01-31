@@ -147,14 +147,14 @@ fn build_chunk_surface_mesh(
   let total = chunk_size * chunk_size
   let heights = Array::make(total, 0)
   let blocks = Array::make(total, Block::Air)
-  fn surface_height_block(world : World, gx : Int, gz : Int) -> (Int, Block) {
+  let side_blocks = Array::make(total, Block::Air)
+  fn surface_height(world : World, gx : Int, gz : Int) -> Int {
     let info = world.column_info(gx, gz)
     let h = info.height
-    let (top_block, _) = surface_blocks(world, gx, gz, info)
     if h <= world.sea_level {
-      (world.sea_level, Block::Water)
+      world.sea_level
     } else {
-      (h, top_block)
+      h
     }
   }
 
@@ -164,14 +164,16 @@ fn build_chunk_surface_mesh(
       let gz = cz * chunk_size + z
       let info = world.column_info(gx, gz)
       let h = info.height
-      let (top_block, _) = surface_blocks(world, gx, gz, info)
+      let (top_block, mid_block) = surface_blocks(world, gx, gz, info)
       let idx = x + z * chunk_size
       if h <= world.sea_level {
         heights[idx] = world.sea_level
         blocks[idx] = Block::Water
+        side_blocks[idx] = Block::Water
       } else {
         heights[idx] = h
         blocks[idx] = top_block
+        side_blocks[idx] = mid_block
       }
     }
   }
@@ -239,142 +241,99 @@ fn build_chunk_surface_mesh(
         continue
       }
       let height = heights[idx]
+      let side_block = side_blocks[idx]
       let gx = cx * chunk_size + x
       let gz = cz * chunk_size + z
-      let (h_east, _) = if x + 1 < chunk_size {
+      let use_trans = block_is_transparent(side_block)
+      let positions = if use_trans { trans_positions } else { solid_positions }
+      let colors = if use_trans { trans_colors } else { solid_colors }
+      let uvs = if use_trans { trans_uvs } else { solid_uvs }
+      let h_east = if x + 1 < chunk_size {
         let idx2 = x + 1 + z * chunk_size
-        (heights[idx2], blocks[idx2])
+        heights[idx2]
       } else {
-        surface_height_block(world, gx + 1, gz)
+        surface_height(world, gx + 1, gz)
       }
       if height > h_east {
         let x0 = (gx + 1).to_double()
         let z0 = gz.to_double()
         let z1 = (gz + 1).to_double()
         append_face_east_rect(
-          if block_is_transparent(block) {
-            trans_positions
-          } else {
-            solid_positions
-          },
-          if block_is_transparent(block) {
-            trans_colors
-          } else {
-            solid_colors
-          },
-          if block_is_transparent(block) {
-            trans_uvs
-          } else {
-            solid_uvs
-          },
+          positions,
+          colors,
+          uvs,
           x0,
           z0,
           z1,
           h_east.to_double(),
           height.to_double(),
-          block,
+          side_block,
         )
       }
-      let (h_west, _) = if x > 0 {
+      let h_west = if x > 0 {
         let idx2 = x - 1 + z * chunk_size
-        (heights[idx2], blocks[idx2])
+        heights[idx2]
       } else {
-        surface_height_block(world, gx - 1, gz)
+        surface_height(world, gx - 1, gz)
       }
       if height > h_west {
         let x0 = gx.to_double()
         let z0 = gz.to_double()
         let z1 = (gz + 1).to_double()
         append_face_west_rect(
-          if block_is_transparent(block) {
-            trans_positions
-          } else {
-            solid_positions
-          },
-          if block_is_transparent(block) {
-            trans_colors
-          } else {
-            solid_colors
-          },
-          if block_is_transparent(block) {
-            trans_uvs
-          } else {
-            solid_uvs
-          },
+          positions,
+          colors,
+          uvs,
           x0,
           z0,
           z1,
           h_west.to_double(),
           height.to_double(),
-          block,
+          side_block,
         )
       }
-      let (h_south, _) = if z + 1 < chunk_size {
+      let h_south = if z + 1 < chunk_size {
         let idx2 = x + (z + 1) * chunk_size
-        (heights[idx2], blocks[idx2])
+        heights[idx2]
       } else {
-        surface_height_block(world, gx, gz + 1)
+        surface_height(world, gx, gz + 1)
       }
       if height > h_south {
         let x0 = gx.to_double()
         let x1 = (gx + 1).to_double()
         let z0 = (gz + 1).to_double()
         append_face_south_rect(
-          if block_is_transparent(block) {
-            trans_positions
-          } else {
-            solid_positions
-          },
-          if block_is_transparent(block) {
-            trans_colors
-          } else {
-            solid_colors
-          },
-          if block_is_transparent(block) {
-            trans_uvs
-          } else {
-            solid_uvs
-          },
+          positions,
+          colors,
+          uvs,
           x0,
           x1,
           z0,
           h_south.to_double(),
           height.to_double(),
-          block,
+          side_block,
         )
       }
-      let (h_north, _) = if z > 0 {
+      let h_north = if z > 0 {
         let idx2 = x + (z - 1) * chunk_size
-        (heights[idx2], blocks[idx2])
+        heights[idx2]
       } else {
-        surface_height_block(world, gx, gz - 1)
+        surface_height(world, gx, gz - 1)
       }
       if height > h_north {
         let x0 = gx.to_double()
         let x1 = (gx + 1).to_double()
         let z0 = gz.to_double()
         append_face_north_rect(
-          if block_is_transparent(block) {
-            trans_positions
-          } else {
-            solid_positions
-          },
-          if block_is_transparent(block) {
-            trans_colors
-          } else {
-            solid_colors
-          },
-          if block_is_transparent(block) {
-            trans_uvs
-          } else {
-            solid_uvs
-          },
+          positions,
+          colors,
+          uvs,
           x0,
           x1,
           z0,
           h_north.to_double(),
           height.to_double(),
-          block,
+          side_block,
         )
       }
     }
