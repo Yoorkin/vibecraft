@@ -17,6 +17,10 @@ priv struct Game {
   mut visible_index : @hashmap.HashMap[String, Int]
   mut slot_coords : Array[(Int, Int)]
   mut dirty_chunks : Array[(Int, Int)]
+  mut chunk_queue : Array[(Int, Int)]
+  mut chunk_queue_cursor : Int
+  mut queued_index : @hashmap.HashMap[String, Bool]
+  chunk_build_budget : Int
   camera : Camera
   mut player_height : Double
   mut last_time : Double
@@ -95,6 +99,10 @@ fn init_game() -> Unit {
     visible_index: @hashmap.new(capacity=visible_capacity),
     slot_coords: [],
     dirty_chunks: [],
+    chunk_queue: [],
+    chunk_queue_cursor: 0,
+    queued_index: @hashmap.new(capacity=visible_capacity),
+    chunk_build_budget: 4,
     camera,
     player_height: standing_height(),
     last_time: dom_now_ms(),
@@ -123,6 +131,7 @@ fn game_frame(game : Game, time : Double) -> Unit {
   handle_block_edit(game)
   update_particles(game, dt)
   upload_particles(game)
+  process_chunk_queue(game)
   flush_dirty_chunks(game)
   let aspect = if game.renderer.height > 0 {
     game.renderer.width.to_double() / game.renderer.height.to_double()
@@ -613,29 +622,91 @@ fn set_hotbar(game : Game, slot : Int, block : Block) -> Unit {
 }
 
 ///|
-fn visible_coords(cx : Int, cz : Int, dist : Int) -> Array[(Int, Int)] {
+
+///|
+fn visible_coords_ring(cx : Int, cz : Int, dist : Int) -> Array[(Int, Int)] {
   let coords : Array[(Int, Int)] = []
-  let start_x = cx - dist
-  let end_x = cx + dist
-  let start_z = cz - dist
-  let end_z = cz + dist
-  for z = start_z; z <= end_z; z = z + 1 {
-    for x = start_x; x <= end_x; x = x + 1 {
-      coords.push((x, z))
+  coords.push((cx, cz))
+  for r = 1; r <= dist; r = r + 1 {
+    let x0 = cx - r
+    let x1 = cx + r
+    let z0 = cz - r
+    let z1 = cz + r
+    for x = x0; x <= x1; x = x + 1 {
+      coords.push((x, z0))
+      coords.push((x, z1))
+    }
+    if z1 - z0 > 1 {
+      for z = z0 + 1; z <= z1 - 1; z = z + 1 {
+        coords.push((x0, z))
+        coords.push((x1, z))
+      }
     }
   }
   coords
 }
 
 ///|
+fn empty_mesh() -> Mesh {
+  { positions: [], colors: [], uvs: [], vertex_count: 0 }
+}
+
+///|
+fn empty_chunk_mesh() -> ChunkMesh {
+  { solid: empty_mesh(), cutout: empty_mesh(), trans: empty_mesh() }
+}
+
+///|
+fn enqueue_chunk(game : Game, cx : Int, cz : Int) -> Unit {
+  let key = chunk_key(cx, cz)
+  match game.queued_index.get(key) {
+    Some(_) => ()
+    None => {
+      game.queued_index.set(key, true)
+      game.chunk_queue.push((cx, cz))
+    }
+  }
+}
+
+///|
+fn process_chunk_queue(game : Game) -> Unit {
+  let mut built = 0
+  let budget = game.chunk_build_budget
+  while built < budget && game.chunk_queue_cursor < game.chunk_queue.length() {
+    let (cx, cz) = game.chunk_queue[game.chunk_queue_cursor]
+    game.chunk_queue_cursor = game.chunk_queue_cursor + 1
+    let key = chunk_key(cx, cz)
+    match game.visible_index.get(key) {
+      Some(idx) => {
+        let mesh = build_chunk_mesh(game.world, cx, cz, game.chunk_size)
+        game.renderer.update_chunk(idx, mesh)
+      }
+      None => ()
+    }
+    game.queued_index.remove(key)
+    built = built + 1
+  }
+  if game.chunk_queue_cursor >= game.chunk_queue.length() {
+    game.chunk_queue = []
+    game.chunk_queue_cursor = 0
+    game.queued_index = @hashmap.new(
+      capacity=game.visible_index.length() * 2 + 1,
+    )
+  }
+}
+
+///|
 fn refresh_visible_chunks(game : Game) -> Unit {
-  let coords = visible_coords(
+  let coords = visible_coords_ring(
     game.current_cx,
     game.current_cz,
     game.view_distance,
   )
   if game.slot_coords.length() == 0 {
-    let meshes = build_chunk_meshes(game.world, coords, game.chunk_size)
+    let meshes : Array[ChunkMesh] = []
+    for i = 0; i < coords.length(); i = i + 1 {
+      meshes.push(empty_chunk_mesh())
+    }
     game.renderer.upload_chunk_meshes(meshes)
     game.visible_index = @hashmap.new(capacity=coords.length() * 2 + 1)
     for i = 0; i < coords.length(); i = i + 1 {
@@ -645,7 +716,34 @@ fn refresh_visible_chunks(game : Game) -> Unit {
     }
     game.slot_coords = coords
     game.dirty_chunks = []
+    game.chunk_queue = []
+    game.chunk_queue_cursor = 0
+    game.queued_index = @hashmap.new(capacity=coords.length() * 2 + 1)
+    for i = 0; i < coords.length(); i = i + 1 {
+      let (cx, cz) = coords[i]
+      enqueue_chunk(game, cx, cz)
+    }
     return
+  }
+  let visible_set = @hashmap.new(capacity=coords.length() * 2 + 1)
+  for i = 0; i < coords.length(); i = i + 1 {
+    let (cx, cz) = coords[i]
+    visible_set.set(chunk_key(cx, cz), true)
+  }
+  let pending_queue : Array[(Int, Int)] = []
+  for i = game.chunk_queue_cursor; i < game.chunk_queue.length(); i = i + 1 {
+    let (cx, cz) = game.chunk_queue[i]
+    let key = chunk_key(cx, cz)
+    if visible_set.contains(key) {
+      pending_queue.push((cx, cz))
+    }
+  }
+  game.chunk_queue = pending_queue
+  game.chunk_queue_cursor = 0
+  game.queued_index = @hashmap.new(capacity=coords.length() * 2 + 1)
+  for i = 0; i < game.chunk_queue.length(); i = i + 1 {
+    let (cx, cz) = game.chunk_queue[i]
+    game.queued_index.set(chunk_key(cx, cz), true)
   }
   let next_index = @hashmap.new(capacity=coords.length() * 2 + 1)
   let used = Array::make(game.slot_coords.length(), false)
@@ -675,11 +773,11 @@ fn refresh_visible_chunks(game : Game) -> Unit {
     let idx = free_slots[cursor]
     cursor = cursor + 1
     let (cx, cz) = pending[i]
-    let mesh = build_chunk_mesh(game.world, cx, cz, game.chunk_size)
-    game.renderer.update_chunk(idx, mesh)
+    game.renderer.update_chunk(idx, empty_chunk_mesh())
     game.slot_coords[idx] = (cx, cz)
     let key = chunk_key(cx, cz)
     next_index.set(key, idx)
+    enqueue_chunk(game, cx, cz)
   }
   game.visible_index = next_index
 }

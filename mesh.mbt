@@ -126,20 +126,6 @@ fn build_chunk_mesh(
 }
 
 ///|
-fn build_chunk_meshes(
-  world : World,
-  coords : Array[(Int, Int)],
-  chunk_size : Int,
-) -> Array[ChunkMesh] {
-  let meshes : Array[ChunkMesh] = []
-  for i = 0; i < coords.length(); i = i + 1 {
-    let (cx, cz) = coords[i]
-    meshes.push(build_chunk_mesh(world, cx, cz, chunk_size))
-  }
-  meshes
-}
-
-///|
 fn face_visible(block : Block, neighbor : Block) -> Bool {
   if block_is_air(block) {
     false
