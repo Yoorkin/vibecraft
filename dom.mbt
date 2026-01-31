@@ -40,13 +40,14 @@ extern "js" fn dom_now_ms() -> Double =
 ///|
 extern "js" fn input_init(canvas : JsValue) -> Unit =
   #| (canvas) => {
+  #|   const prev = window.__moonbit_input;
   #|   const state = {
   #|     keys: Object.create(null),
   #|     buttons: Object.create(null),
   #|     clicks: Object.create(null),
   #|     dx: 0,
   #|     dy: 0,
-  #|     fly: false,
+  #|     fly: prev && typeof prev.fly === "boolean" ? prev.fly : false,
   #|   };
   #|   window.__moonbit_input = state;
   #|   window.addEventListener("keydown", (e) => { state.keys[e.code] = true; });
@@ -71,6 +72,11 @@ extern "js" fn input_init(canvas : JsValue) -> Unit =
   #|     }
   #|   });
   #|   window.addEventListener("contextmenu", (e) => e.preventDefault());
+  #|   const btn = document.getElementById("fly-toggle");
+  #|   if (btn) {
+  #|     btn.textContent = state.fly ? "Fly: On" : "Fly: Off";
+  #|     btn.classList.toggle("active", !!state.fly);
+  #|   }
   #| }
 
 ///|
@@ -122,19 +128,33 @@ extern "js" fn dom_init_fly_toggle() -> Unit =
   #| () => {
   #|   const btn = document.getElementById("fly-toggle");
   #|   if (!btn) return;
-  #|   const s = window.__moonbit_input;
-  #|   if (!s) return;
-  #|   if (typeof s.fly !== "boolean") s.fly = false;
-  #|   const update = () => {
+  #|   const getState = () => {
+  #|     let s = window.__moonbit_input;
+  #|     if (!s) {
+  #|       s = {
+  #|         keys: Object.create(null),
+  #|         buttons: Object.create(null),
+  #|         clicks: Object.create(null),
+  #|         dx: 0,
+  #|         dy: 0,
+  #|         fly: false,
+  #|       };
+  #|       window.__moonbit_input = s;
+  #|     }
+  #|     if (typeof s.fly !== "boolean") s.fly = false;
+  #|     return s;
+  #|   };
+  #|   const update = (s) => {
   #|     const on = !!s.fly;
   #|     btn.textContent = on ? "Fly: On" : "Fly: Off";
   #|     btn.classList.toggle("active", on);
   #|   };
-  #|   update();
+  #|   update(getState());
   #|   btn.addEventListener("click", (e) => {
   #|     e.preventDefault();
+  #|     const s = getState();
   #|     s.fly = !s.fly;
-  #|     update();
+  #|     update(s);
   #|   });
   #| }
 
