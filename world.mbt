@@ -26,6 +26,9 @@ priv enum Biome {
   Mountains
   Desert
   Mesa
+  River
+  Snow
+  Karst
 }
 
 ///|
@@ -169,20 +172,16 @@ fn biome_from(
   ridge : Double,
   land : Double,
 ) -> Biome {
-  if land < 0.18 {
+  if land < 0.16 {
     Biome::Ocean
-  } else if temp > 0.68 && moist < 0.36 {
+  } else if temp > 0.7 && moist < 0.34 {
     if ridge > 0.55 {
       Biome::Mesa
     } else {
       Biome::Desert
     }
-  } else if ridge > 0.65 {
-    if temp < 0.45 {
-      Biome::Mountains
-    } else {
-      Biome::Hills
-    }
+  } else if ridge > 0.62 {
+    Biome::Hills
   } else if moist > 0.62 {
     Biome::Forest
   } else {
@@ -318,42 +317,80 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
   let fx = x.to_double()
   let fz = z.to_double()
   let (wx, wz) = warp_coords(fx, fz)
-  let continent = fbm(wx * 0.0014, wz * 0.0014)
+  let continent = fbm(wx * 0.0011, wz * 0.0011)
   let continentalness = continent * 2.0 - 1.0
-  let land = clamp01((continentalness + 0.08) / 0.6)
-  let hills = fbm(wx * 0.02, wz * 0.02)
-  let detail = fbm(wx * 0.09, wz * 0.09)
-  let ridge = ridged(wx * 0.007, wz * 0.007)
-  let cliff = ridged(wx * 0.04, wz * 0.04)
+  let land = clamp01((continentalness + 0.2) / 0.55)
+  let hills = fbm(wx * 0.018, wz * 0.018)
+  let detail = fbm(wx * 0.085, wz * 0.085)
+  let ridge = ridged(wx * 0.0065, wz * 0.0065)
+  let peaks = ridged(wx * 0.012, wz * 0.012)
+  let mountain_chain = ridged(wx * 0.0019 + 7.4, wz * 0.0019 - 3.1)
+  let chain_mask = clamp01((mountain_chain - 0.45) / 0.4)
+  let cliff = ridged(wx * 0.038, wz * 0.038)
   let cliff_mask = clamp01((cliff - 0.55) / 0.45)
-  let coast = clamp01((0.45 - land) / 0.25)
+  let coast = clamp01((0.42 - land) / 0.24)
   let coast_noise = fbm(wx * 0.03 + 19.2, wz * 0.03 - 7.1)
   let coast_cliff = clamp01((coast_noise - 0.65) / 0.2) * coast
-  let temp = fbm(wx * 0.0016 + 5.2, wz * 0.0016 - 9.7)
-  let moist = fbm(wx * 0.0019 - 7.3, wz * 0.0019 + 2.4)
-  let biome = biome_from(temp, moist, ridge, land)
+  let temp = fbm(wx * 0.0015 + 5.2, wz * 0.0015 - 9.7)
+  let moist = fbm(wx * 0.0018 - 7.3, wz * 0.0018 + 2.4)
+  let karst_noise = fbm(wx * 0.008 + 21.4, wz * 0.008 - 17.2)
+  let karst_mask = clamp01((karst_noise - 0.55) / 0.25)
+  let basin_noise = fbm(wx * 0.00085 - 14.1, wz * 0.00085 + 9.2)
+  let basin_mask = clamp01((0.38 - basin_noise) / 0.2)
+  let river_noise = fbm(wx * 0.002 + 12.4, wz * 0.002 - 8.2)
+  let river_shape = 1.0 - (river_noise * 2.0 - 1.0).abs()
+  let river_mask = clamp01((river_shape - 0.78) / 0.12)
+  let mut biome = biome_from(temp, moist, ridge, land)
   let sea = self.sea_level.to_double()
-  let base_ocean = sea - 28.0
-  let base_land = sea - 6.0
+  let base_ocean = sea - 34.0
+  let base_land = sea - 8.0
   let land_height = base_land +
-    (continent - 0.5) * 18.0 +
-    (hills - 0.5) * 12.0 +
+    (continent - 0.5) * 22.0 +
+    (hills - 0.5) * 14.0 +
     (detail - 0.5) * 4.0
   let mut height = lerp(base_ocean, land_height, land)
+  height = height + chain_mask * 34.0 + chain_mask * peaks * 26.0
+  height = height + ridge * 12.0 + cliff_mask * 10.0
+  height = height - basin_mask * 18.0
+  if karst_mask > 0.4 && land > 0.3 {
+    height = terrace(height + karst_mask * 10.0, 1.6)
+    let sink = fbm(wx * 0.05 + 3.1, wz * 0.05 - 6.7)
+    if sink > 0.72 {
+      height = height - (sink - 0.72) * 18.0 * karst_mask
+    }
+  }
+  if river_mask > 0.0 && land > 0.22 {
+    let river_depth = river_mask * (10.0 + (1.0 - chain_mask) * 6.0)
+    height = height - river_depth
+  }
   match biome {
-    Biome::Ocean => height = height - 6.0 - land * 4.0
-    Biome::Mountains => height = height + ridge * 40.0 + cliff_mask * 16.0
-    Biome::Hills => height = height + ridge * 20.0 + cliff_mask * 8.0
+    Biome::Ocean => height = height - 8.0 - land * 6.0
     Biome::Mesa => {
-      height = height + ridge * 12.0 + (hills - 0.5) * 6.0
-      height = terrace(height, 3.2)
-      height = height + (detail - 0.5) * 2.0
+      height = height + ridge * 10.0 + (hills - 0.5) * 5.0
+      height = terrace(height, 3.0)
     }
     Biome::Desert =>
-      height = height + (hills - 0.5) * 4.0 + (detail - 0.5) * 2.0
+      height = height + (hills - 0.5) * 4.0 + (detail - 0.5) * 1.5
     Biome::Forest =>
-      height = height + (hills - 0.5) * 6.0 + (detail - 0.5) * 4.0
-    Biome::Plains => height = lerp(height, sea + 4.0, 0.55)
+      height = height + (hills - 0.5) * 6.0 + (detail - 0.5) * 3.0
+    Biome::Plains => height = lerp(height, sea + 6.0, 0.6)
+    Biome::Hills => height = height + ridge * 8.0 + (hills - 0.5) * 4.0
+    Biome::Mountains => height = height + ridge * 18.0 + peaks * 10.0
+    Biome::River => height = height
+    Biome::Snow => height = height
+    Biome::Karst => height = height
+  }
+  if land > 0.2 && river_mask > 0.55 && ridge < 0.7 {
+    biome = Biome::River
+  }
+  if chain_mask > 0.55 && land > 0.3 {
+    biome = Biome::Mountains
+  }
+  if karst_mask > 0.6 && land > 0.32 && temp > 0.4 && temp < 0.75 {
+    biome = Biome::Karst
+  }
+  if height > sea + 28.0 && temp < 0.55 {
+    biome = Biome::Snow
   }
   if cliff_mask > 0.6 {
     height = terrace(height, 2.0) + cliff_mask * 4.0
@@ -402,6 +439,9 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
         Biome::Hills => Block::Grass
         Biome::Forest => Block::Grass
         Biome::Plains => Block::Grass
+        Biome::River => Block::Sand
+        Biome::Snow => Block::Snow
+        Biome::Karst => Block::Stone
       }
       let mut mid_block = match biome {
         Biome::Ocean => Block::Sand
@@ -411,6 +451,9 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
         Biome::Hills => Block::Dirt
         Biome::Forest => Block::Dirt
         Biome::Plains => Block::Dirt
+        Biome::River => Block::Clay
+        Biome::Snow => Block::Stone
+        Biome::Karst => Block::Stone
       }
       let is_shore = h <= world.sea_level + 1
       if is_shore {
@@ -455,6 +498,9 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
           Biome::Ocean => 4
           Biome::Desert => 4
           Biome::Mesa => 4
+          Biome::River => 4
+          Biome::Snow => 4
+          Biome::Karst => 4
         }
         let tree_radius = if tree_radius + radius_bias < 2 {
           2
@@ -470,6 +516,9 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
           Biome::Mountains => 0.88
           Biome::Desert => 1.1
           Biome::Mesa => 1.05
+          Biome::River => 1.2
+          Biome::Snow => 1.2
+          Biome::Karst => 1.0
         }
         let density_boost = (forest - 0.5) * 0.16
         tree_threshold = tree_threshold - moist * 0.08 - density_boost
