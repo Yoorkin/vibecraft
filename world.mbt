@@ -29,7 +29,7 @@ priv enum Biome {
   River
   Snow
   Karst
-}
+} derive(Eq)
 
 ///|
 priv struct ColumnInfo {
@@ -463,6 +463,27 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
       if ridge > 0.78 && h > world.sea_level + 6 {
         top_block = Block::Stone
         mid_block = Block::Stone
+      }
+      let surface_noise = fbm(
+        gx.to_double() * 0.06 + 2.1,
+        gz.to_double() * 0.06 - 3.7,
+      )
+      let is_stony = match top_block {
+        Block::Stone => true
+        _ => false
+      }
+      let allow_soil = biome != Biome::Mountains &&
+        biome != Biome::Snow &&
+        h > world.sea_level + 2
+      if is_stony && allow_soil {
+        let karst_limit = if biome == Biome::Karst { 0.68 } else { 0.52 }
+        if surface_noise > karst_limit && moist > 0.35 {
+          top_block = Block::Grass
+          mid_block = Block::Dirt
+        } else if surface_noise > 0.45 {
+          top_block = Block::Dirt
+          mid_block = Block::Dirt
+        }
       }
       for y = 0; y < world.height; y = y + 1 {
         let idx = world.chunk_index(lx, y, lz)
