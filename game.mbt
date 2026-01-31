@@ -113,6 +113,7 @@ fn init_game() -> Unit {
   input_init(canvas)
   dom_init_fly_toggle()
   dom_init_random_teleport()
+  dom_init_command_input()
   let renderer = renderer_init(canvas)
   let world = World::new(2000, 16, 32)
   let chunk_size = 16
@@ -245,6 +246,34 @@ fn update_camera(game : Game, dt : Double, now : Double) -> Unit {
   }
   game.last_w_down = w_down
   let mut pos = game.camera.position
+  let cmd = input_consume_command()
+  if cmd.length() > 0 {
+    let code = cmd[0]
+    if code == 1 && cmd.length() >= 4 {
+      let x = cmd[1]
+      let y = cmd[2]
+      let z = cmd[3]
+      pos = vec3(x.to_double() + 0.5, y.to_double() + 2.0, z.to_double() + 0.5)
+      game.camera.vel_y = 0.0
+      game.player_height = standing_height()
+    } else if code == 2 && cmd.length() >= 3 {
+      let x = cmd[1]
+      let z = cmd[2]
+      let h = game.world.height_at(x, z)
+      pos = vec3(x.to_double() + 0.5, h.to_double() + 2.0, z.to_double() + 0.5)
+      game.camera.vel_y = 0.0
+      game.player_height = standing_height()
+    } else if code == 3 && cmd.length() >= 3 {
+      let yaw_deg = cmd[1]
+      let pitch_deg = cmd[2]
+      game.camera.yaw = yaw_deg.to_double() * @math.PI / 180.0
+      game.camera.pitch = clamp(
+        pitch_deg.to_double() * @math.PI / 180.0,
+        -1.55,
+        1.55,
+      )
+    }
+  }
   if input_consume_teleport() {
     pos = random_spawn(game)
     game.camera.vel_y = 0.0

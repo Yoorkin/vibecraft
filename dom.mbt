@@ -49,6 +49,7 @@ extern "js" fn input_init(canvas : JsValue) -> Unit =
   #|     dy: 0,
   #|     fly: prev && typeof prev.fly === "boolean" ? prev.fly : false,
   #|     teleport: false,
+  #|     cmds: prev && Array.isArray(prev.cmds) ? prev.cmds : [],
   #|   };
   #|   window.__moonbit_input = state;
   #|   window.addEventListener("keydown", (e) => { state.keys[e.code] = true; });
@@ -135,6 +136,14 @@ extern "js" fn input_consume_teleport() -> Bool =
   #| }
 
 ///|
+extern "js" fn input_consume_command() -> Array[Int] =
+  #| () => {
+  #|   const s = window.__moonbit_input;
+  #|   if (!s || !Array.isArray(s.cmds) || s.cmds.length === 0) return [];
+  #|   return s.cmds.shift();
+  #| }
+
+///|
 extern "js" fn dom_init_fly_toggle() -> Unit =
   #| () => {
   #|   const btn = document.getElementById("fly-toggle");
@@ -150,6 +159,7 @@ extern "js" fn dom_init_fly_toggle() -> Unit =
   #|         dy: 0,
   #|         fly: false,
   #|         teleport: false,
+  #|         cmds: [],
   #|       };
   #|       window.__moonbit_input = s;
   #|     }
@@ -186,6 +196,7 @@ extern "js" fn dom_init_random_teleport() -> Unit =
   #|         dy: 0,
   #|         fly: false,
   #|         teleport: false,
+  #|         cmds: [],
   #|       };
   #|       window.__moonbit_input = s;
   #|     }
@@ -198,6 +209,74 @@ extern "js" fn dom_init_random_teleport() -> Unit =
   #|     s.teleport = true;
   #|     btn.classList.add("active");
   #|     setTimeout(() => btn.classList.remove("active"), 120);
+  #|   });
+  #| }
+
+///|
+extern "js" fn dom_init_command_input() -> Unit =
+  #| () => {
+  #|   const input = document.getElementById("cmd-input");
+  #|   const btn = document.getElementById("cmd-run");
+  #|   if (!input || !btn) return;
+  #|   const getState = () => {
+  #|     let s = window.__moonbit_input;
+  #|     if (!s) {
+  #|       s = {
+  #|         keys: Object.create(null),
+  #|         buttons: Object.create(null),
+  #|         clicks: Object.create(null),
+  #|         dx: 0,
+  #|         dy: 0,
+  #|         fly: false,
+  #|         teleport: false,
+  #|         cmds: [],
+  #|       };
+  #|       window.__moonbit_input = s;
+  #|     }
+  #|     if (!Array.isArray(s.cmds)) s.cmds = [];
+  #|     return s;
+  #|   };
+  #|   const parseInts = (parts) => {
+  #|     const out = [];
+  #|     for (let i = 0; i < parts.length; i++) {
+  #|       const v = parseInt(parts[i], 10);
+  #|       if (Number.isFinite(v)) out.push(v);
+  #|     }
+  #|     return out;
+  #|   };
+  #|   const submit = () => {
+  #|     const text = input.value.trim();
+  #|     if (!text) return;
+  #|     const parts = text.split(/\s+/);
+  #|     const cmd = parts[0].toLowerCase();
+  #|     const nums = parseInts(parts.slice(1));
+  #|     let payload = null;
+  #|     if (cmd === "tp") {
+  #|       if (nums.length >= 3) {
+  #|         payload = [1, nums[0], nums[1], nums[2]];
+  #|       } else if (nums.length >= 2) {
+  #|         payload = [2, nums[0], nums[1]];
+  #|       }
+  #|     } else if (cmd === "look") {
+  #|       if (nums.length >= 2) {
+  #|         payload = [3, nums[0], nums[1]];
+  #|       }
+  #|     }
+  #|     if (payload) {
+  #|       const s = getState();
+  #|       s.cmds.push(payload);
+  #|       input.value = "";
+  #|     }
+  #|   };
+  #|   btn.addEventListener("click", (e) => {
+  #|     e.preventDefault();
+  #|     submit();
+  #|   });
+  #|   input.addEventListener("keydown", (e) => {
+  #|     if (e.key === "Enter") {
+  #|       e.preventDefault();
+  #|       submit();
+  #|     }
   #|   });
   #| }
 
