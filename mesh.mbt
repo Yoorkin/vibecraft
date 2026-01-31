@@ -158,6 +158,66 @@ fn build_chunk_surface_mesh(
     }
   }
 
+  fn emit_east(
+    block : Block,
+    x : Double,
+    z0 : Double,
+    z1 : Double,
+    y0 : Double,
+    y1 : Double,
+  ) -> Unit {
+    let use_trans = block_is_transparent(block)
+    let positions = if use_trans { trans_positions } else { solid_positions }
+    let colors = if use_trans { trans_colors } else { solid_colors }
+    let uvs = if use_trans { trans_uvs } else { solid_uvs }
+    append_face_east_rect(positions, colors, uvs, x, z0, z1, y0, y1, block)
+  }
+
+  fn emit_west(
+    block : Block,
+    x : Double,
+    z0 : Double,
+    z1 : Double,
+    y0 : Double,
+    y1 : Double,
+  ) -> Unit {
+    let use_trans = block_is_transparent(block)
+    let positions = if use_trans { trans_positions } else { solid_positions }
+    let colors = if use_trans { trans_colors } else { solid_colors }
+    let uvs = if use_trans { trans_uvs } else { solid_uvs }
+    append_face_west_rect(positions, colors, uvs, x, z0, z1, y0, y1, block)
+  }
+
+  fn emit_south(
+    block : Block,
+    x0 : Double,
+    x1 : Double,
+    z : Double,
+    y0 : Double,
+    y1 : Double,
+  ) -> Unit {
+    let use_trans = block_is_transparent(block)
+    let positions = if use_trans { trans_positions } else { solid_positions }
+    let colors = if use_trans { trans_colors } else { solid_colors }
+    let uvs = if use_trans { trans_uvs } else { solid_uvs }
+    append_face_south_rect(positions, colors, uvs, x0, x1, z, y0, y1, block)
+  }
+
+  fn emit_north(
+    block : Block,
+    x0 : Double,
+    x1 : Double,
+    z : Double,
+    y0 : Double,
+    y1 : Double,
+  ) -> Unit {
+    let use_trans = block_is_transparent(block)
+    let positions = if use_trans { trans_positions } else { solid_positions }
+    let colors = if use_trans { trans_colors } else { solid_colors }
+    let uvs = if use_trans { trans_uvs } else { solid_uvs }
+    append_face_north_rect(positions, colors, uvs, x0, x1, z, y0, y1, block)
+  }
+
   for z = 0; z < chunk_size; z = z + 1 {
     for x = 0; x < chunk_size; x = x + 1 {
       let gx = cx * chunk_size + x
@@ -242,12 +302,9 @@ fn build_chunk_surface_mesh(
       }
       let height = heights[idx]
       let side_block = side_blocks[idx]
+      let use_top_side = block == Block::Grass || block == Block::Snow
       let gx = cx * chunk_size + x
       let gz = cz * chunk_size + z
-      let use_trans = block_is_transparent(side_block)
-      let positions = if use_trans { trans_positions } else { solid_positions }
-      let colors = if use_trans { trans_colors } else { solid_colors }
-      let uvs = if use_trans { trans_uvs } else { solid_uvs }
       let h_east = if x + 1 < chunk_size {
         let idx2 = x + 1 + z * chunk_size
         heights[idx2]
@@ -258,17 +315,22 @@ fn build_chunk_surface_mesh(
         let x0 = (gx + 1).to_double()
         let z0 = gz.to_double()
         let z1 = (gz + 1).to_double()
-        append_face_east_rect(
-          positions,
-          colors,
-          uvs,
-          x0,
-          z0,
-          z1,
-          h_east.to_double(),
-          height.to_double(),
-          side_block,
-        )
+        let diff = height - h_east
+        if use_top_side && diff > 1 {
+          let y_split = (height - 1).to_double()
+          emit_east(side_block, x0, z0, z1, h_east.to_double(), y_split)
+          emit_east(block, x0, z0, z1, y_split, height.to_double())
+        } else {
+          let face_block = if use_top_side { block } else { side_block }
+          emit_east(
+            face_block,
+            x0,
+            z0,
+            z1,
+            h_east.to_double(),
+            height.to_double(),
+          )
+        }
       }
       let h_west = if x > 0 {
         let idx2 = x - 1 + z * chunk_size
@@ -280,17 +342,22 @@ fn build_chunk_surface_mesh(
         let x0 = gx.to_double()
         let z0 = gz.to_double()
         let z1 = (gz + 1).to_double()
-        append_face_west_rect(
-          positions,
-          colors,
-          uvs,
-          x0,
-          z0,
-          z1,
-          h_west.to_double(),
-          height.to_double(),
-          side_block,
-        )
+        let diff = height - h_west
+        if use_top_side && diff > 1 {
+          let y_split = (height - 1).to_double()
+          emit_west(side_block, x0, z0, z1, h_west.to_double(), y_split)
+          emit_west(block, x0, z0, z1, y_split, height.to_double())
+        } else {
+          let face_block = if use_top_side { block } else { side_block }
+          emit_west(
+            face_block,
+            x0,
+            z0,
+            z1,
+            h_west.to_double(),
+            height.to_double(),
+          )
+        }
       }
       let h_south = if z + 1 < chunk_size {
         let idx2 = x + (z + 1) * chunk_size
@@ -302,17 +369,22 @@ fn build_chunk_surface_mesh(
         let x0 = gx.to_double()
         let x1 = (gx + 1).to_double()
         let z0 = (gz + 1).to_double()
-        append_face_south_rect(
-          positions,
-          colors,
-          uvs,
-          x0,
-          x1,
-          z0,
-          h_south.to_double(),
-          height.to_double(),
-          side_block,
-        )
+        let diff = height - h_south
+        if use_top_side && diff > 1 {
+          let y_split = (height - 1).to_double()
+          emit_south(side_block, x0, x1, z0, h_south.to_double(), y_split)
+          emit_south(block, x0, x1, z0, y_split, height.to_double())
+        } else {
+          let face_block = if use_top_side { block } else { side_block }
+          emit_south(
+            face_block,
+            x0,
+            x1,
+            z0,
+            h_south.to_double(),
+            height.to_double(),
+          )
+        }
       }
       let h_north = if z > 0 {
         let idx2 = x + (z - 1) * chunk_size
@@ -324,17 +396,22 @@ fn build_chunk_surface_mesh(
         let x0 = gx.to_double()
         let x1 = (gx + 1).to_double()
         let z0 = gz.to_double()
-        append_face_north_rect(
-          positions,
-          colors,
-          uvs,
-          x0,
-          x1,
-          z0,
-          h_north.to_double(),
-          height.to_double(),
-          side_block,
-        )
+        let diff = height - h_north
+        if use_top_side && diff > 1 {
+          let y_split = (height - 1).to_double()
+          emit_north(side_block, x0, x1, z0, h_north.to_double(), y_split)
+          emit_north(block, x0, x1, z0, y_split, height.to_double())
+        } else {
+          let face_block = if use_top_side { block } else { side_block }
+          emit_north(
+            face_block,
+            x0,
+            x1,
+            z0,
+            h_north.to_double(),
+            height.to_double(),
+          )
+        }
       }
     }
   }
