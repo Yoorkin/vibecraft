@@ -48,6 +48,7 @@ extern "js" fn input_init(canvas : JsValue) -> Unit =
   #|     dx: 0,
   #|     dy: 0,
   #|     fly: prev && typeof prev.fly === "boolean" ? prev.fly : false,
+  #|     teleport: false,
   #|   };
   #|   window.__moonbit_input = state;
   #|   window.addEventListener("keydown", (e) => { state.keys[e.code] = true; });
@@ -124,6 +125,16 @@ extern "js" fn input_fly_enabled() -> Bool =
   #| }
 
 ///|
+extern "js" fn input_consume_teleport() -> Bool =
+  #| () => {
+  #|   const s = window.__moonbit_input;
+  #|   if (!s) return false;
+  #|   const v = !!s.teleport;
+  #|   s.teleport = false;
+  #|   return v;
+  #| }
+
+///|
 extern "js" fn dom_init_fly_toggle() -> Unit =
   #| () => {
   #|   const btn = document.getElementById("fly-toggle");
@@ -138,6 +149,7 @@ extern "js" fn dom_init_fly_toggle() -> Unit =
   #|         dx: 0,
   #|         dy: 0,
   #|         fly: false,
+  #|         teleport: false,
   #|       };
   #|       window.__moonbit_input = s;
   #|     }
@@ -155,6 +167,37 @@ extern "js" fn dom_init_fly_toggle() -> Unit =
   #|     const s = getState();
   #|     s.fly = !s.fly;
   #|     update(s);
+  #|   });
+  #| }
+
+///|
+extern "js" fn dom_init_random_teleport() -> Unit =
+  #| () => {
+  #|   const btn = document.getElementById("teleport-random");
+  #|   if (!btn) return;
+  #|   const getState = () => {
+  #|     let s = window.__moonbit_input;
+  #|     if (!s) {
+  #|       s = {
+  #|         keys: Object.create(null),
+  #|         buttons: Object.create(null),
+  #|         clicks: Object.create(null),
+  #|         dx: 0,
+  #|         dy: 0,
+  #|         fly: false,
+  #|         teleport: false,
+  #|       };
+  #|       window.__moonbit_input = s;
+  #|     }
+  #|     if (typeof s.teleport !== "boolean") s.teleport = false;
+  #|     return s;
+  #|   };
+  #|   btn.addEventListener("click", (e) => {
+  #|     e.preventDefault();
+  #|     const s = getState();
+  #|     s.teleport = true;
+  #|     btn.classList.add("active");
+  #|     setTimeout(() => btn.classList.remove("active"), 120);
   #|   });
   #| }
 

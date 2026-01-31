@@ -83,10 +83,36 @@ fn find_spawn(world : World) -> Vec3 {
 }
 
 ///|
+fn random_spawn(game : Game) -> Vec3 {
+  let sea = game.world.sea_level
+  let radius = 768.0
+  let tries = 200
+  for i = 0; i < tries; i = i + 1 {
+    let rx = (rand_next(game) * 2.0 - 1.0) * radius
+    let rz = (rand_next(game) * 2.0 - 1.0) * radius
+    let x = rx.floor().to_int()
+    let z = rz.floor().to_int()
+    let h = game.world.height_at(x, z)
+    if h > sea + 1 {
+      let pos = vec3(
+        x.to_double() + 0.5,
+        h.to_double() + 2.0,
+        z.to_double() + 0.5,
+      )
+      if position_free(game.world, pos, standing_height()) {
+        return pos
+      }
+    }
+  }
+  find_spawn(game.world)
+}
+
+///|
 fn init_game() -> Unit {
   let canvas = dom_create_canvas()
   input_init(canvas)
   dom_init_fly_toggle()
+  dom_init_random_teleport()
   let renderer = renderer_init(canvas)
   let world = World::new(384, 16, 32)
   let chunk_size = 16
@@ -190,6 +216,7 @@ fn update_camera(game : Game, dt : Double, now : Double) -> Unit {
   game.camera.yaw = game.camera.yaw + dx * sensitivity
   game.camera.pitch = clamp(game.camera.pitch - dy * sensitivity, -1.55, 1.55)
   let fly_mode = input_fly_enabled()
+  let fly_speed_mul = 3.0
   let mut direction = vec3(0.0, 0.0, 0.0)
   let yaw = game.camera.yaw
   let forward_flat = vec3(@math.cos(yaw), 0.0, @math.sin(yaw)).normalize()
@@ -218,6 +245,11 @@ fn update_camera(game : Game, dt : Double, now : Double) -> Unit {
   }
   game.last_w_down = w_down
   let mut pos = game.camera.position
+  if input_consume_teleport() {
+    pos = random_spawn(game)
+    game.camera.vel_y = 0.0
+    game.player_height = standing_height()
+  }
   let sneak_key = input_key("ShiftLeft") || input_key("ShiftRight")
   let sneaking = if fly_mode { false } else { sneak_key }
   let sprinting = !sneak_key &&
@@ -241,8 +273,8 @@ fn update_camera(game : Game, dt : Double, now : Double) -> Unit {
     in_water = false
   }
   if direction.length() > 0.0 {
-    let base_speed = if fly_mode { 11.0 } else { 5.2 }
-    let sprint_speed = if fly_mode { 17.0 } else { 7.6 }
+    let base_speed = if fly_mode { 11.0 * fly_speed_mul } else { 5.2 }
+    let sprint_speed = if fly_mode { 17.0 * fly_speed_mul } else { 7.6 }
     let sneak_speed = 2.6
     let water_speed = 2.8
     let speed = if sneaking {
@@ -291,7 +323,11 @@ fn update_camera(game : Game, dt : Double, now : Double) -> Unit {
     }
     if vertical != 0.0 {
       let fly_speed = if sprinting { 12.0 } else { 8.5 }
-      let next_y = vec3(pos.x, pos.y + vertical * fly_speed * dt, pos.z)
+      let next_y = vec3(
+        pos.x,
+        pos.y + vertical * fly_speed * fly_speed_mul * dt,
+        pos.z,
+      )
       if position_free(game.world, next_y, game.player_height) {
         pos = next_y
       }
