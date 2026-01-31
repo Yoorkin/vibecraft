@@ -26,6 +26,21 @@
         font-size: 12px;
         line-height: 1.4;
       }
+      #hud button {
+        margin-top: 6px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        background: rgba(255, 255, 255, 0.12);
+        color: #eee;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      #hud button.active {
+        background: #7be07b;
+        border-color: #a7f0a7;
+        color: #111;
+      }
       #crosshair {
         position: fixed;
         left: 50%;
@@ -126,6 +141,10 @@
       WASD move · Space jump · Shift sneak · Ctrl or double-tap W sprint<br />
       Left click break · Right click place<br />
       1-0 / - / = select block
+      <br />
+      <button id="fly-toggle" type="button" title="Esc to unlock cursor">
+        Fly: Off
+      </button>
     </div>
     <div id="crosshair"></div>
     <div id="loading">

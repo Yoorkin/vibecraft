@@ -80,6 +80,7 @@ fn find_spawn(world : World) -> Vec3 {
 fn init_game() -> Unit {
   let canvas = dom_create_canvas()
   input_init(canvas)
+  dom_init_fly_toggle()
   let renderer = renderer_init(canvas)
   let world = World::new(96, 16)
   let chunk_size = 16
@@ -171,6 +172,7 @@ fn update_camera(game : Game, dt : Double, now : Double) -> Unit {
   let dy = input_mouse_dy()
   game.camera.yaw = game.camera.yaw + dx * sensitivity
   game.camera.pitch = clamp(game.camera.pitch - dy * sensitivity, -1.55, 1.55)
+  let fly_mode = input_fly_enabled()
   let mut direction = vec3(0.0, 0.0, 0.0)
   let yaw = game.camera.yaw
   let forward_flat = vec3(@math.cos(yaw), 0.0, @math.sin(yaw)).normalize()
@@ -199,8 +201,9 @@ fn update_camera(game : Game, dt : Double, now : Double) -> Unit {
   }
   game.last_w_down = w_down
   let mut pos = game.camera.position
-  let sneaking = input_key("ShiftLeft") || input_key("ShiftRight")
-  let sprinting = !sneaking &&
+  let sneak_key = input_key("ShiftLeft") || input_key("ShiftRight")
+  let sneaking = if fly_mode { false } else { sneak_key }
+  let sprinting = !sneak_key &&
     (input_key("ControlLeft") || input_key("ControlRight") || game.sprint_latch)
   let target_height = if sneaking {
     sneaking_height()
@@ -217,9 +220,12 @@ fn update_camera(game : Game, dt : Double, now : Double) -> Unit {
   }
   let mut on_ground = player_on_ground(game.world, pos, game.player_height)
   let mut in_water = player_in_water(game.world, pos, game.player_height)
+  if fly_mode {
+    in_water = false
+  }
   if direction.length() > 0.0 {
-    let base_speed = 5.2
-    let sprint_speed = 7.6
+    let base_speed = if fly_mode { 7.0 } else { 5.2 }
+    let sprint_speed = if fly_mode { 11.0 } else { 7.6 }
     let sneak_speed = 2.6
     let water_speed = 2.8
     let speed = if sneaking {
@@ -231,7 +237,7 @@ fn update_camera(game : Game, dt : Double, now : Double) -> Unit {
     } else {
       base_speed
     }
-    let air_control = if on_ground { 1.0 } else { 0.7 }
+    let air_control = if fly_mode || on_ground { 1.0 } else { 0.7 }
     let velocity = direction.normalize().mul(speed * air_control * dt)
     let next_x = vec3(pos.x + velocity.x, pos.y, pos.z)
     if position_free(game.world, next_x, game.player_height) {
@@ -252,10 +258,29 @@ fn update_camera(game : Game, dt : Double, now : Double) -> Unit {
   }
   on_ground = player_on_ground(game.world, pos, game.player_height)
   in_water = player_in_water(game.world, pos, game.player_height)
+  if fly_mode {
+    in_water = false
+  }
   if on_ground && game.camera.vel_y < 0.0 {
     game.camera.vel_y = 0.0
   }
-  if in_water {
+  if fly_mode {
+    let mut vertical = 0.0
+    if input_key("Space") {
+      vertical = vertical + 1.0
+    }
+    if sneak_key {
+      vertical = vertical - 1.0
+    }
+    if vertical != 0.0 {
+      let fly_speed = if sprinting { 7.5 } else { 4.5 }
+      let next_y = vec3(pos.x, pos.y + vertical * fly_speed * dt, pos.z)
+      if position_free(game.world, next_y, game.player_height) {
+        pos = next_y
+      }
+    }
+    game.camera.vel_y = 0.0
+  } else if in_water {
     let gravity = 6.0
     let swim_speed = 3.0
     if input_key("Space") {

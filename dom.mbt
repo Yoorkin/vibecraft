@@ -46,6 +46,7 @@ extern "js" fn input_init(canvas : JsValue) -> Unit =
   #|     clicks: Object.create(null),
   #|     dx: 0,
   #|     dy: 0,
+  #|     fly: false,
   #|   };
   #|   window.__moonbit_input = state;
   #|   window.addEventListener("keydown", (e) => { state.keys[e.code] = true; });
@@ -107,6 +108,34 @@ extern "js" fn input_mouse_dy() -> Double =
   #|   const v = s.dy || 0;
   #|   s.dy = 0;
   #|   return v;
+  #| }
+
+///|
+extern "js" fn input_fly_enabled() -> Bool =
+  #| () => {
+  #|   const s = window.__moonbit_input;
+  #|   return !!(s && s.fly);
+  #| }
+
+///|
+extern "js" fn dom_init_fly_toggle() -> Unit =
+  #| () => {
+  #|   const btn = document.getElementById("fly-toggle");
+  #|   if (!btn) return;
+  #|   const s = window.__moonbit_input;
+  #|   if (!s) return;
+  #|   if (typeof s.fly !== "boolean") s.fly = false;
+  #|   const update = () => {
+  #|     const on = !!s.fly;
+  #|     btn.textContent = on ? "Fly: On" : "Fly: Off";
+  #|     btn.classList.toggle("active", on);
+  #|   };
+  #|   update();
+  #|   btn.addEventListener("click", (e) => {
+  #|     e.preventDefault();
+  #|     s.fly = !s.fly;
+  #|     update();
+  #|   });
   #| }
 
 ///|
