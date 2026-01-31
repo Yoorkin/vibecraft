@@ -324,6 +324,8 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
   let detail = fbm(wx * 0.085, wz * 0.085)
   let ridge = ridged(wx * 0.0065, wz * 0.0065)
   let peaks = ridged(wx * 0.012, wz * 0.012)
+  let mega = ridged(wx * 0.0008 + 2.5, wz * 0.0008 - 5.4)
+  let mega_mask = clamp01((mega - 0.6) / 0.25)
   let mountain_chain = ridged(wx * 0.0019 + 7.4, wz * 0.0019 - 3.1)
   let chain_mask = clamp01((mountain_chain - 0.45) / 0.4)
   let cliff = ridged(wx * 0.038, wz * 0.038)
@@ -350,6 +352,7 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
     (detail - 0.5) * 4.0
   let mut height = lerp(base_ocean, land_height, land)
   height = height + chain_mask * 34.0 + chain_mask * peaks * 26.0
+  height = height + mega_mask * 90.0 + mega_mask * peaks * 32.0
   height = height + ridge * 12.0 + cliff_mask * 10.0
   height = height - basin_mask * 18.0
   if karst_mask > 0.4 && land > 0.3 {
@@ -386,10 +389,13 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
   if chain_mask > 0.55 && land > 0.3 {
     biome = Biome::Mountains
   }
+  if mega_mask > 0.55 && land > 0.3 {
+    biome = Biome::Mountains
+  }
   if karst_mask > 0.68 && land > 0.32 && temp > 0.4 && temp < 0.75 {
     biome = Biome::Karst
   }
-  if height > sea + 28.0 && temp < 0.55 {
+  if height > sea + 34.0 {
     biome = Biome::Snow
   }
   if cliff_mask > 0.6 {
@@ -462,7 +468,7 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
       }
       let sea = world.sea_level
       if biome == Biome::Mountains {
-        if h > sea + 22 {
+        if h > sea + 30 {
           top_block = Block::Stone
           mid_block = Block::Stone
         } else {
@@ -470,8 +476,13 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
           mid_block = Block::Dirt
         }
       }
-      if biome != Biome::Snow && ridge > 0.84 && h > sea + 20 {
+      if biome != Biome::Snow && ridge > 0.88 && h > sea + 28 {
         top_block = Block::Stone
+        mid_block = Block::Stone
+      }
+      let snow_line = sea + 34
+      if h >= snow_line {
+        top_block = Block::Snow
         mid_block = Block::Stone
       }
       let surface_noise = fbm(
@@ -482,15 +493,13 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
         Block::Stone => true
         _ => false
       }
-      let allow_soil = biome != Biome::Mountains &&
-        biome != Biome::Snow &&
-        h > world.sea_level + 2
+      let allow_soil = biome != Biome::Snow && h > world.sea_level + 2
       if is_stony && allow_soil {
-        let karst_limit = if biome == Biome::Karst { 0.68 } else { 0.52 }
-        if surface_noise > karst_limit && moist > 0.35 {
+        let karst_limit = if biome == Biome::Karst { 0.62 } else { 0.45 }
+        if surface_noise > karst_limit && moist > 0.3 {
           top_block = Block::Grass
           mid_block = Block::Dirt
-        } else if surface_noise > 0.45 {
+        } else if surface_noise > 0.38 {
           top_block = Block::Dirt
           mid_block = Block::Dirt
         }
