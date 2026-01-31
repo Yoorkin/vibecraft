@@ -224,8 +224,8 @@ fn update_camera(game : Game, dt : Double, now : Double) -> Unit {
     in_water = false
   }
   if direction.length() > 0.0 {
-    let base_speed = if fly_mode { 8.5 } else { 5.2 }
-    let sprint_speed = if fly_mode { 13.5 } else { 7.6 }
+    let base_speed = if fly_mode { 11.0 } else { 5.2 }
+    let sprint_speed = if fly_mode { 17.0 } else { 7.6 }
     let sneak_speed = 2.6
     let water_speed = 2.8
     let speed = if sneaking {
@@ -273,7 +273,7 @@ fn update_camera(game : Game, dt : Double, now : Double) -> Unit {
       vertical = vertical - 1.0
     }
     if vertical != 0.0 {
-      let fly_speed = if sprinting { 9.0 } else { 6.0 }
+      let fly_speed = if sprinting { 12.0 } else { 8.5 }
       let next_y = vec3(pos.x, pos.y + vertical * fly_speed * dt, pos.z)
       if position_free(game.world, next_y, game.player_height) {
         pos = next_y
