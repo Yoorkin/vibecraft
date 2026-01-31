@@ -1,0 +1,14 @@
+{
+  "is-main": true,
+  "import": [
+    {
+      "path": "username/webcubes",
+      "alias": "lib"
+    }
+  ],
+  "link": {
+    "js": {
+      "format": "iife"
+    }
+  }
+}

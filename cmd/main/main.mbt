@@ -1,0 +1,4 @@
+///|
+fn main {
+  @lib.start()
+}
