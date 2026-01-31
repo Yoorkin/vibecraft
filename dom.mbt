@@ -135,269 +135,400 @@ extern "js" fn dom_create_atlas() -> JsValue =
   #|   canvas.height = tile * rows;
   #|   const ctx = canvas.getContext("2d");
   #|   ctx.imageSmoothingEnabled = false;
-  #|   function hash(x, y, seed) {
-  #|     let n = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, 1442695041);
-  #|     n = (n ^ (n >>> 13)) >>> 0;
-  #|     n = Math.imul(n, 1274126177);
-  #|     n = (n ^ (n >>> 16)) >>> 0;
-  #|     return n / 4294967295;
+  #|   function rowsFrom(str) {
+  #|     return str.trim().split("\n").map((line) => line.trim());
   #|   }
-  #|   function smoothstep(t) {
-  #|     return t * t * (3 - 2 * t);
-  #|   }
-  #|   function valueNoise(x, y, seed) {
-  #|     const x0 = Math.floor(x);
-  #|     const y0 = Math.floor(y);
-  #|     const x1 = x0 + 1;
-  #|     const y1 = y0 + 1;
-  #|     const fx = x - x0;
-  #|     const fy = y - y0;
-  #|     const u = smoothstep(fx);
-  #|     const v = smoothstep(fy);
-  #|     const n00 = hash(x0, y0, seed);
-  #|     const n10 = hash(x1, y0, seed);
-  #|     const n01 = hash(x0, y1, seed);
-  #|     const n11 = hash(x1, y1, seed);
-  #|     const nx0 = n00 + (n10 - n00) * u;
-  #|     const nx1 = n01 + (n11 - n01) * u;
-  #|     return nx0 + (nx1 - nx0) * v;
-  #|   }
-  #|   function fbm(x, y, seed) {
-  #|     let sum = 0;
-  #|     let amp = 1;
-  #|     let freq = 1;
-  #|     let norm = 0;
-  #|     for (let i = 0; i < 3; i++) {
-  #|       sum += valueNoise(x * freq, y * freq, seed + i * 17) * amp;
-  #|       norm += amp;
-  #|       amp *= 0.5;
-  #|       freq *= 2;
-  #|     }
-  #|     return sum / norm;
-  #|   }
-  #|   function pick(colors, r) {
-  #|     return colors[Math.floor(r * colors.length)];
-  #|   }
-  #|   function fillTile(tx, ty, color) {
-  #|     const x = tx * tile;
-  #|     const y = ty * tile;
-  #|     ctx.fillStyle = color;
-  #|     ctx.fillRect(x, y, tile, tile);
-  #|   }
-  #|   function blockNoise(tx, ty, colors, seed, block) {
+  #|   function drawTile(tx, ty, palette, rows) {
   #|     const x0 = tx * tile;
   #|     const y0 = ty * tile;
-  #|     const n = colors.length;
   #|     for (let y = 0; y < tile; y++) {
+  #|       const row = rows[y];
   #|       for (let x = 0; x < tile; x++) {
-  #|         const r = hash(x + x0, y + y0, seed);
-  #|         const idx = Math.min(n - 1, Math.floor(r * n));
-  #|         ctx.fillStyle = colors[idx];
+  #|         const ch = row[x];
+  #|         if (ch === ".") continue;
+  #|         const color = palette[ch];
+  #|         if (!color) continue;
+  #|         ctx.fillStyle = color;
   #|         ctx.fillRect(x0 + x, y0 + y, 1, 1);
   #|       }
   #|     }
   #|   }
-  #|   function blockNoiseAlpha(tx, ty, colors, seed, block) {
-  #|     const x0 = tx * tile;
-  #|     const y0 = ty * tile;
-  #|     const n = colors.length;
-  #|     for (let y = 0; y < tile; y++) {
-  #|       for (let x = 0; x < tile; x++) {
-  #|         const r = hash(x + x0, y + y0, seed);
-  #|         const idx = Math.min(n - 1, Math.floor(r * n));
-  #|         ctx.fillStyle = colors[idx];
-  #|         ctx.fillRect(x0 + x, y0 + y, 1, 1);
-  #|       }
-  #|     }
-  #|   }
-  #|   function speckle(tx, ty, color, seed, rate) {
-  #|     const x0 = tx * tile;
-  #|     const y0 = ty * tile;
-  #|     for (let y = 0; y < tile; y++) {
-  #|       for (let x = 0; x < tile; x++) {
-  #|         if (hash(x + x0, y + y0, seed) > rate) {
-  #|           ctx.fillStyle = color;
-  #|           ctx.fillRect(x0 + x, y0 + y, 1, 1);
-  #|         }
-  #|       }
-  #|     }
-  #|   }
-  #|   function grassTop(tx, ty) {
-  #|     const greens = ["#5ca142", "#6aad4d", "#4f9b3c", "#73b957"];
-  #|     blockNoise(tx, ty, greens, 11, 1);
-  #|     speckle(tx, ty, "#76c65b", 37, 0.985);
-  #|   }
-  #|   function grassSide(tx, ty) {
-  #|     const x0 = tx * tile;
-  #|     const y0 = ty * tile;
-  #|     const grassColors = ["#5ca142", "#6aad4d", "#4f9b3c", "#73b957"];
-  #|     const dirtColors = ["#8b6b4b", "#7a5c3c", "#946f53", "#6e5236"];
-  #|     const block = 1;
-  #|     for (let by = 0; by < tile; by += block) {
-  #|       for (let bx = 0; bx < tile; bx += block) {
-  #|         const isGrass = by < 4;
-  #|         const colors = isGrass ? grassColors : dirtColors;
-  #|         const seed = isGrass ? 19 : 23;
-  #|         ctx.fillStyle = pick(colors, hash(bx + x0, by + y0, seed));
-  #|         ctx.fillRect(x0 + bx, y0 + by, block, block);
-  #|       }
-  #|     }
-  #|     ctx.fillStyle = "rgba(0,0,0,0.22)";
-  #|     ctx.fillRect(x0, y0 + 3, tile, 1);
-  #|   }
-  #|   function woodTop(tx, ty) {
-  #|     const x0 = tx * tile;
-  #|     const y0 = ty * tile;
-  #|     const cx = x0 + tile / 2;
-  #|     const cy = y0 + tile / 2;
-  #|     for (let y = 0; y < tile; y++) {
-  #|       for (let x = 0; x < tile; x++) {
-  #|         const dx = x0 + x - cx;
-  #|         const dy = y0 + y - cy;
-  #|         const dist = Math.sqrt(dx * dx + dy * dy);
-  #|         const ring = (Math.floor(dist + 0.5) % 2) === 0;
-  #|         let use = ring ? "#c79a5a" : "#b0814b";
-  #|         if (hash(x + x0, y + y0, 31) > 0.96) {
-  #|           use = "#8d5f33";
-  #|         }
-  #|         ctx.fillStyle = use;
-  #|         ctx.fillRect(x0 + x, y0 + y, 1, 1);
-  #|       }
-  #|     }
-  #|   }
-  #|   function woodSide(tx, ty) {
-  #|     const x0 = tx * tile;
-  #|     const y0 = ty * tile;
-  #|     for (let x = 0; x < tile; x++) {
-  #|       const jitter = Math.floor(hash(x + x0, y0, 29) * 2);
-  #|       const band = ((x + jitter) % 6) < 3;
-  #|       ctx.fillStyle = band ? "#a8743f" : "#c28b52";
-  #|       ctx.fillRect(x0 + x, y0, 1, tile);
-  #|     }
-  #|   }
-  #|   function leavesTile(tx, ty) {
-  #|     const x0 = tx * tile;
-  #|     const y0 = ty * tile;
-  #|     const leafColors = ["#3f9142", "#2f7b34", "#4fa551", "#2a6a2f"];
-  #|     const block = 1;
-  #|     for (let by = 0; by < tile; by += block) {
-  #|       for (let bx = 0; bx < tile; bx += block) {
-  #|         const r = hash(bx + x0, by + y0, 41);
-  #|         if (r > 0.86) {
-  #|           ctx.clearRect(x0 + bx, y0 + by, block, block);
-  #|           continue;
-  #|         }
-  #|         ctx.fillStyle = pick(leafColors, r * 0.9);
-  #|         ctx.fillRect(x0 + bx, y0 + by, block, block);
-  #|       }
-  #|     }
-  #|   }
-  #|   function planks(tx, ty) {
-  #|     const x0 = tx * tile;
-  #|     const y0 = ty * tile;
-  #|     for (let y = 0; y < tile; y++) {
-  #|       const band = Math.floor(y / 4) % 2 === 0;
-  #|       ctx.fillStyle = band ? "#c59257" : "#b8824c";
-  #|       ctx.fillRect(x0, y0 + y, tile, 1);
-  #|     }
-  #|     ctx.fillStyle = "#9c6b3e";
-  #|     for (let y = 0; y < tile; y += 4) {
-  #|       ctx.fillRect(x0, y0 + y, tile, 1);
-  #|     }
-  #|     ctx.fillStyle = "#8b5b33";
-  #|     ctx.fillRect(x0 + 7, y0, 1, tile);
-  #|     if (hash(x0, y0, 83) > 0.6) {
-  #|       ctx.fillStyle = "#7a4d2c";
-  #|       ctx.fillRect(x0 + 11, y0 + 6, 2, 2);
-  #|     }
-  #|   }
-  #|   function brick(tx, ty) {
-  #|     const x0 = tx * tile;
-  #|     const y0 = ty * tile;
-  #|     ctx.fillStyle = "#7a2e25";
-  #|     ctx.fillRect(x0, y0, tile, tile);
-  #|     const brickW = 6;
-  #|     const brickH = 4;
-  #|     for (let y = 0; y < tile; y += brickH) {
-  #|       const offset = (Math.floor(y / brickH) % 2) * 3;
-  #|       for (let x = -offset; x < tile; x += brickW) {
-  #|         const bx = x0 + x + 1;
-  #|         const by = y0 + y + 1;
-  #|         ctx.fillStyle = "#b85743";
-  #|         ctx.fillRect(bx, by, brickW - 2, brickH - 2);
-  #|         ctx.fillStyle = "#9a4637";
-  #|         ctx.fillRect(bx, by, brickW - 2, 1);
-  #|       }
-  #|     }
-  #|   }
-  #|   function stone(tx, ty) {
-  #|     blockNoise(tx, ty, ["#8c8c8c", "#868686", "#7f7f7f", "#909090"], 17, 1);
-  #|     speckle(tx, ty, "#9a9a9a", 73, 0.995);
-  #|   }
-  #|   function bedrock(tx, ty) {
-  #|     blockNoise(tx, ty, ["#3a3a3a", "#2b2b2b", "#4a4a4a", "#1f1f1f"], 3, 1);
-  #|     speckle(tx, ty, "#101010", 59, 0.97);
-  #|     const x0 = tx * tile;
-  #|     const y0 = ty * tile;
-  #|     ctx.fillStyle = "rgba(0,0,0,0.35)";
-  #|     for (let i = 0; i < 3; i++) {
-  #|       const y = Math.floor(hash(i, 9, 59) * tile);
-  #|       ctx.fillRect(x0, y0 + y, tile, 1);
-  #|     }
-  #|   }
-  #|   function water(tx, ty) {
-  #|     const x0 = tx * tile;
-  #|     const y0 = ty * tile;
-  #|     const grad = ctx.createLinearGradient(0, y0, 0, y0 + tile);
-  #|     grad.addColorStop(0, "rgba(70,140,220,0.65)");
-  #|     grad.addColorStop(1, "rgba(50,110,190,0.65)");
-  #|     ctx.fillStyle = grad;
-  #|     ctx.fillRect(x0, y0, tile, tile);
-  #|     blockNoiseAlpha(
-  #|       tx,
-  #|       ty,
-  #|       ["rgba(70,140,220,0.5)", "rgba(55,120,205,0.5)", "rgba(85,155,235,0.45)"],
-  #|       5,
-  #|       2,
-  #|     );
-  #|     ctx.fillStyle = "rgba(120,180,245,0.25)";
-  #|     for (let y = 0; y < tile; y += 4) {
-  #|       ctx.fillRect(x0, y0 + y, tile, 1);
-  #|     }
-  #|   }
-  #|   function cobble(tx, ty) {
-  #|     blockNoise(tx, ty, ["#8a8a8a", "#7a7a7a", "#909090", "#6f6f6f"], 27, 1);
-  #|     speckle(tx, ty, "#5f5f5f", 81, 0.996);
-  #|   }
-  #|   function gravel(tx, ty) {
-  #|     blockNoise(tx, ty, ["#8c8a86", "#7f7c77", "#8f8c88", "#6f6c68"], 33, 1);
-  #|     speckle(tx, ty, "#5f5d59", 35, 0.987);
-  #|   }
-  #|   function clay(tx, ty) {
-  #|     blockNoise(tx, ty, ["#8b95a7", "#7e8899", "#9aa4b6", "#768091"], 39, 1);
-  #|     speckle(tx, ty, "rgba(255,255,255,0.18)", 41, 0.995);
-  #|   }
-  #|   function snow(tx, ty) {
-  #|     blockNoise(tx, ty, ["#f2f6fb", "#e7edf6", "#f7fbff", "#dde5ee"], 45, 1);
-  #|     speckle(tx, ty, "#cfd7e0", 47, 0.992);
-  #|   }
-  #|   // Tiles (tx, ty)
-  #|   grassTop(0, 0); // grass top
-  #|   grassSide(1, 0); // grass side
-  #|   blockNoise(2, 0, ["#7b4c22", "#6b3f1d", "#8a5329", "#5c3518"], 13, 1); // dirt
-  #|   stone(3, 0); // stone
-  #|   blockNoise(0, 1, ["#d8c06a", "#c8b25f", "#e1c979", "#bfa64f"], 7, 1); // sand
-  #|   water(1, 1); // water
-  #|   woodTop(2, 1); // wood top
-  #|   woodSide(3, 1); // wood side
-  #|   leavesTile(0, 2); // leaves
-  #|   bedrock(1, 2); // bedrock
-  #|   planks(2, 2); // planks
-  #|   brick(3, 2); // brick
-  #|   cobble(0, 3); // cobblestone
-  #|   gravel(1, 3); // gravel
-  #|   clay(2, 3); // clay
-  #|   snow(3, 3); // snow
+  #|   const grassPalette = {
+  #|     a: "#5fb84a",
+  #|     b: "#56aa42",
+  #|     c: "#4a9637",
+  #|     d: "#6ed05a",
+  #|   };
+  #|   const dirtPalette = {
+  #|     "1": "#8a5a2b",
+  #|     "2": "#7a4d24",
+  #|     "3": "#9a6431",
+  #|     "4": "#6d4420",
+  #|   };
+  #|   const stonePalette = {
+  #|     a: "#8b8d90",
+  #|     b: "#7c7e82",
+  #|     c: "#9a9da1",
+  #|     d: "#6f7175",
+  #|   };
+  #|   const sandPalette = {
+  #|     a: "#d9c48a",
+  #|     b: "#cfb87c",
+  #|     c: "#e2cf95",
+  #|     d: "#c4ad6f",
+  #|   };
+  #|   const waterPalette = {
+  #|     a: "rgba(70,125,210,0.6)",
+  #|     b: "rgba(58,110,195,0.6)",
+  #|     c: "rgba(80,140,220,0.6)",
+  #|     d: "rgba(95,155,235,0.45)",
+  #|   };
+  #|   const woodTopPalette = {
+  #|     a: "#d0a36a",
+  #|     b: "#c08a52",
+  #|     c: "#a97443",
+  #|     d: "#8c5e32",
+  #|   };
+  #|   const woodSidePalette = {
+  #|     a: "#c79253",
+  #|     b: "#b17b45",
+  #|     c: "#9e6a39",
+  #|     d: "#7f532c",
+  #|   };
+  #|   const leavesPalette = {
+  #|     a: "#4aa34a",
+  #|     b: "#3f8f3f",
+  #|     c: "#5cb85c",
+  #|     d: "#357a35",
+  #|   };
+  #|   const bedrockPalette = {
+  #|     a: "#3b3b3b",
+  #|     b: "#2f2f2f",
+  #|     c: "#4a4a4a",
+  #|     d: "#1f1f1f",
+  #|   };
+  #|   const planksPalette = {
+  #|     a: "#cfa26a",
+  #|     b: "#b9874f",
+  #|     c: "#a07040",
+  #|     d: "#8d5c33",
+  #|   };
+  #|   const brickPalette = {
+  #|     a: "#b65a4a",
+  #|     b: "#9e483b",
+  #|     c: "#c76b58",
+  #|     m: "#8a7b6f",
+  #|   };
+  #|   const cobblePalette = {
+  #|     a: "#8d8d8d",
+  #|     b: "#7a7a7a",
+  #|     c: "#9c9c9c",
+  #|     d: "#6a6a6a",
+  #|   };
+  #|   const gravelPalette = {
+  #|     a: "#8a887f",
+  #|     b: "#7a786f",
+  #|     c: "#94928a",
+  #|     d: "#6b6861",
+  #|   };
+  #|   const clayPalette = {
+  #|     a: "#8a94a6",
+  #|     b: "#7c8697",
+  #|     c: "#9aa4b6",
+  #|   };
+  #|   const snowPalette = {
+  #|     a: "#f7fbff",
+  #|     b: "#e5edf6",
+  #|     c: "#d7e0ea",
+  #|   };
+  #|   const grassTopRows = rowsFrom(`
+  #|     abacbabcabacbabc
+  #|     bacabdbcbacabdbc
+  #|     acbbacabacbbacab
+  #|     baccdbabbaccdbab
+  #|     cbacbaccabacbacc
+  #|     abacbabcabacbabc
+  #|     bacabbacbacabbac
+  #|     acbbacdaacbbacda
+  #|     abacbabcabacbabc
+  #|     bacabdbcbacabdbc
+  #|     acbbacabacbbacab
+  #|     baccdbabbaccdbab
+  #|     cbacbaccabacbacc
+  #|     abacbabcabacbabc
+  #|     bacabbacbacabbac
+  #|     acbbacdaacbbacda
+  #|   `);
+  #|   const dirtRows = rowsFrom(`
+  #|     1213212312132123
+  #|     2312213223122132
+  #|     1322131213221312
+  #|     2133122121331221
+  #|     3213213332132133
+  #|     1213212312132123
+  #|     2131221321312213
+  #|     1322132113221321
+  #|     2213431222134312
+  #|     3122132231221322
+  #|     1213212312132123
+  #|     2312213223122132
+  #|     1322131213221312
+  #|     2133122121331221
+  #|     3213213332132133
+  #|     1213212312132123
+  #|   `);
+  #|   const grassSideRows = grassTopRows.slice(0, 4).concat(dirtRows.slice(4));
+  #|   const stoneRows = rowsFrom(`
+  #|     abbcacbbabbcacbb
+  #|     bbacabbcbbacabbc
+  #|     cabbabdccabbabdc
+  #|     abbdbcababbdbcab
+  #|     bcabbabcbcabbabc
+  #|     cabbcabbcabbcabb
+  #|     abbcacbbabbcacbb
+  #|     bbacabbcbbacabbc
+  #|     cabbabdccabbabdc
+  #|     abbdbcababbdbcab
+  #|     bcabbabcbcabbabc
+  #|     cabbcabbcabbcabb
+  #|     abbcacbbabbcacbb
+  #|     bbacabbcbbacabbc
+  #|     cabbabdccabbabdc
+  #|     abbdbcababbdbcab
+  #|   `);
+  #|   const sandRows = rowsFrom(`
+  #|     aacbbacaaacbbaca
+  #|     bcaaabcabcaaabca
+  #|     caaabccacaaabcca
+  #|     acbbacaaacbbacaa
+  #|     bcaabcaabcaabcaa
+  #|     aacbbacaaacbbaca
+  #|     bcaaabcabcaaabca
+  #|     caaabccacaaabcca
+  #|     acbbacaaacbbacaa
+  #|     bcaabcaabcaabcaa
+  #|     aacbbacaaacbbaca
+  #|     bcaaabcabcaaabca
+  #|     caaabccacaaabcca
+  #|     acbbacaaacbbacaa
+  #|     bcaabcaabcaabcaa
+  #|     aacbbacaaacbbaca
+  #|   `);
+  #|   const waterRows = rowsFrom(`
+  #|     aabccbaaaabccbaa
+  #|     abbccbcaabbccbca
+  #|     bccabccbbccabccb
+  #|     ccbaabccccbaabcc
+  #|     abccbaababccbaab
+  #|     bbccaabbbbccaabb
+  #|     ccbbaaccccbbaacc
+  #|     baccbbacbaccbbac
+  #|     aabccbaaaabccbaa
+  #|     abbccbcaabbccbca
+  #|     bccabccbbccabccb
+  #|     ccbaabccccbaabcc
+  #|     abccbaababccbaab
+  #|     bbccaabbbbccaabb
+  #|     ccbbaaccccbbaacc
+  #|     baccbbacbaccbbac
+  #|   `);
+  #|   const woodTopRows = rowsFrom(`
+  #|     cccccccccccccccc
+  #|     cbbbbbbbbbbbbbbc
+  #|     cbaaaaaaaaaaaabc
+  #|     cbabaaaaaaaababc
+  #|     cbababaaaabababc
+  #|     cbababddddbababc
+  #|     cbababddddbababc
+  #|     cbababddcdbababc
+  #|     cbababdcdcbababc
+  #|     cbababddcdbababc
+  #|     cbababddddbababc
+  #|     cbababaaaabababc
+  #|     cbabaaaaaaaababc
+  #|     cbaaaaaaaaaaaabc
+  #|     cbbbbbbbbbbbbbbc
+  #|     cccccccccccccccc
+  #|   `);
+  #|   const woodSideRows = rowsFrom(`
+  #|     aabbbbaaaabbbbaa
+  #|     aabbbbaaaabbbbaa
+  #|     aabbbbaaaabbbbaa
+  #|     aabbbbaaaabbbbaa
+  #|     aabbbbaaaabbbbaa
+  #|     aabbbbaadabbbbaa
+  #|     aabbbbaaaabbbbaa
+  #|     aabbbbadaabbbbaa
+  #|     aabbbbaaaabbbbaa
+  #|     aabbbbaaaabbbbaa
+  #|     aabbbbaaaabbbbaa
+  #|     aabbbbaadabbbbaa
+  #|     aabbbbaaaabbbbaa
+  #|     aabbbbaaaabbbbaa
+  #|     aabbbbaaaabbbbaa
+  #|     aabbbbaaaabbbbaa
+  #|   `);
+  #|   const leavesRows = rowsFrom(`
+  #|     aabac..bacabacaa
+  #|     abbacabb..bacaba
+  #|     bacab..abacabbac
+  #|     acabbac..abacaba
+  #|     baca..abbacabbac
+  #|     abacabbac..abbac
+  #|     bacabbac..abacaa
+  #|     acaba..bacabbaca
+  #|     aabac..bacabacaa
+  #|     abbacabb..bacaba
+  #|     bacab..abacabbac
+  #|     acabbac..abacaba
+  #|     baca..abbacabbac
+  #|     abacabbac..abbac
+  #|     bacabbac..abacaa
+  #|     acaba..bacabbaca
+  #|   `);
+  #|   const bedrockRows = rowsFrom(`
+  #|     abcbadbbabcbadbb
+  #|     bbacbbdabbacbbda
+  #|     cbabdbaccbabdbac
+  #|     bacbabadbacbabad
+  #|     abcbadbbabcbadbb
+  #|     bbacbbdabbacbbda
+  #|     cbabdbaccbabdbac
+  #|     bacbabadbacbabad
+  #|     abcbadbbabcbadbb
+  #|     bbacbbdabbacbbda
+  #|     cbabdbaccbabdbac
+  #|     bacbabadbacbabad
+  #|     abcbadbbabcbadbb
+  #|     bbacbbdabbacbbda
+  #|     cbabdbaccbabdbac
+  #|     bacbabadbacbabad
+  #|   `);
+  #|   const planksRows = rowsFrom(`
+  #|     cccccccccccccccc
+  #|     aaabbaaabaaabbaa
+  #|     aabbaaabbaaabbaa
+  #|     aaabbaaabaaabbaa
+  #|     cccccccccccccccc
+  #|     aabbaaabbaaabbaa
+  #|     aaabbaaadaaabbaa
+  #|     aabbaaabbaaabbaa
+  #|     cccccccccccccccc
+  #|     aaabbaaabaaabbaa
+  #|     aabbaaabbaaabbaa
+  #|     aaabbaaabaaabbaa
+  #|     cccccccccccccccc
+  #|     aabbaaabbaaabbaa
+  #|     aaabbaaabaaabbaa
+  #|     aabbaaabbaaabbaa
+  #|   `);
+  #|   const brickRows = rowsFrom(`
+  #|     mmmmmmmmmmmmmmmm
+  #|     mcaamabamaacmbaa
+  #|     mbacmcaamabamaac
+  #|     mcaamabamaacmbaa
+  #|     mmmmmmmmmmmmmmmm
+  #|     camaabmcaamabama
+  #|     bamcacmaabmcaamb
+  #|     camaabmcaamabama
+  #|     mmmmmmmmmmmmmmmm
+  #|     mcaamabamaacmbaa
+  #|     mbacmcaamabamaac
+  #|     mcaamabamaacmbaa
+  #|     mmmmmmmmmmmmmmmm
+  #|     camaabmcaamabama
+  #|     bamcacmaabmcaamb
+  #|     camaabmcaamabama
+  #|   `);
+  #|   const cobbleRows = rowsFrom(`
+  #|     abccabbbabccabbb
+  #|     bccabbccbccabbcc
+  #|     cabbccaacabbccaa
+  #|     abbccabbabbccabb
+  #|     bccabbbdbccabbbd
+  #|     cabbccabcabbccab
+  #|     abccabbbabccabbb
+  #|     bccabbccbccabbcc
+  #|     cabbccaacabbccaa
+  #|     abbccabbabbccabb
+  #|     bccabbbdbccabbbd
+  #|     cabbccabcabbccab
+  #|     abccabbbabccabbb
+  #|     bccabbccbccabbcc
+  #|     cabbccaacabbccaa
+  #|     abbccabbabbccabb
+  #|   `);
+  #|   const gravelRows = rowsFrom(`
+  #|     aabbccabaabbccab
+  #|     bbacccbabbacccba
+  #|     acbbacdcacbbacdc
+  #|     bccababcbccababc
+  #|     abbccabaabbccaba
+  #|     ccbabccaccbabcca
+  #|     bacbacbbbacbacbb
+  #|     cabbacbccabbacbc
+  #|     aabbccabaabbccab
+  #|     bbacccbabbacccba
+  #|     acbbacdcacbbacdc
+  #|     bccababcbccababc
+  #|     abbccabaabbccaba
+  #|     ccbabccaccbabcca
+  #|     bacbacbbbacbacbb
+  #|     cabbacbccabbacbc
+  #|   `);
+  #|   const clayRows = rowsFrom(`
+  #|     aabaccaaaabaccaa
+  #|     baccaabbbaccaabb
+  #|     accaaabbaccaaabb
+  #|     caaabbaccaaabbac
+  #|     aabaccaaaabaccaa
+  #|     baccaabbbaccaabb
+  #|     accaaabbaccaaabb
+  #|     caaabbaccaaabbac
+  #|     aabaccaaaabaccaa
+  #|     baccaabbbaccaabb
+  #|     accaaabbaccaaabb
+  #|     caaabbaccaaabbac
+  #|     aabaccaaaabaccaa
+  #|     baccaabbbaccaabb
+  #|     accaaabbaccaaabb
+  #|     caaabbaccaaabbac
+  #|   `);
+  #|   const snowRows = rowsFrom(`
+  #|     aaaaaaaaaaaaaaaa
+  #|     aaabaaaaaaabaaaa
+  #|     aabaaabaaabaaaba
+  #|     aaaaacaaaaacaaaa
+  #|     aaabaaaaaaabaaaa
+  #|     aabaaabaaabaaaba
+  #|     aaaaacaaaaacaaaa
+  #|     aaabaaaaaaabaaaa
+  #|     aabaaabaaabaaaba
+  #|     aaaaacaaaaacaaaa
+  #|     aaabaaaaaaabaaaa
+  #|     aabaaabaaabaaaba
+  #|     aaaaacaaaaacaaaa
+  #|     aaabaaaaaaabaaaa
+  #|     aabaaabaaabaaaba
+  #|     aaaaaaaaaaaaaaaa
+  #|   `);
+  #|   const grassSidePalette = Object.assign({}, grassPalette, dirtPalette);
+  #|   drawTile(0, 0, grassPalette, grassTopRows);
+  #|   drawTile(1, 0, grassSidePalette, grassSideRows);
+  #|   drawTile(2, 0, dirtPalette, dirtRows);
+  #|   drawTile(3, 0, stonePalette, stoneRows);
+  #|   drawTile(0, 1, sandPalette, sandRows);
+  #|   drawTile(1, 1, waterPalette, waterRows);
+  #|   drawTile(2, 1, woodTopPalette, woodTopRows);
+  #|   drawTile(3, 1, woodSidePalette, woodSideRows);
+  #|   drawTile(0, 2, leavesPalette, leavesRows);
+  #|   drawTile(1, 2, bedrockPalette, bedrockRows);
+  #|   drawTile(2, 2, planksPalette, planksRows);
+  #|   drawTile(3, 2, brickPalette, brickRows);
+  #|   drawTile(0, 3, cobblePalette, cobbleRows);
+  #|   drawTile(1, 3, gravelPalette, gravelRows);
+  #|   drawTile(2, 3, clayPalette, clayRows);
+  #|   drawTile(3, 3, snowPalette, snowRows);
   #|   window.__atlas = canvas;
   #|   return canvas;
   #| }
