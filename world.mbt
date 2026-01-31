@@ -386,7 +386,7 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
   if chain_mask > 0.55 && land > 0.3 {
     biome = Biome::Mountains
   }
-  if karst_mask > 0.6 && land > 0.32 && temp > 0.4 && temp < 0.75 {
+  if karst_mask > 0.68 && land > 0.32 && temp > 0.4 && temp < 0.75 {
     biome = Biome::Karst
   }
   if height > sea + 28.0 && temp < 0.55 {
@@ -460,7 +460,17 @@ fn generate_chunk(world : World, cx : Int, cz : Int) -> Chunk {
         top_block = Block::Sand
         mid_block = Block::Sand
       }
-      if ridge > 0.78 && h > world.sea_level + 6 {
+      let sea = world.sea_level
+      if biome == Biome::Mountains {
+        if h > sea + 22 {
+          top_block = Block::Stone
+          mid_block = Block::Stone
+        } else {
+          top_block = Block::Grass
+          mid_block = Block::Dirt
+        }
+      }
+      if biome != Biome::Snow && ridge > 0.84 && h > sea + 20 {
         top_block = Block::Stone
         mid_block = Block::Stone
       }
