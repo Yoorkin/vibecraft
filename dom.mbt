@@ -125,6 +125,24 @@ extern "js" fn dom_set_hotbar(selected : Int) -> Unit =
   #| }
 
 ///|
+extern "js" fn dom_set_loading(progress : Double) -> Unit =
+  #| (progress) => {
+  #|   const el = document.getElementById("loading");
+  #|   if (!el) return;
+  #|   const text = el.querySelector(".loading-text");
+  #|   const fill = el.querySelector(".bar-fill");
+  #|   const p = Math.max(0, Math.min(1, progress || 0));
+  #|   if (p >= 1) {
+  #|     el.style.display = "none";
+  #|     return;
+  #|   }
+  #|   el.style.display = "flex";
+  #|   const pct = Math.round(p * 100);
+  #|   if (text) text.textContent = `Loading ${pct}%`;
+  #|   if (fill) fill.style.width = `${pct}%`;
+  #| }
+
+///|
 extern "js" fn dom_create_atlas() -> JsValue =
   #| () => {
   #|   const tile = 16;

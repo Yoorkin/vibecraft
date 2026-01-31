@@ -21,6 +21,9 @@ priv struct Game {
   mut chunk_queue_cursor : Int
   mut queued_index : @hashmap.HashMap[String, Bool]
   chunk_build_budget : Int
+  mut initial_loading : Bool
+  mut initial_total : Int
+  mut initial_built : Int
   camera : Camera
   mut player_height : Double
   mut last_time : Double
@@ -103,6 +106,9 @@ fn init_game() -> Unit {
     chunk_queue_cursor: 0,
     queued_index: @hashmap.new(capacity=visible_capacity),
     chunk_build_budget: 4,
+    initial_loading: true,
+    initial_total: 0,
+    initial_built: 0,
     camera,
     player_height: standing_height(),
     last_time: dom_now_ms(),
@@ -684,6 +690,22 @@ fn process_chunk_queue(game : Game) -> Unit {
       None => ()
     }
     game.queued_index.remove(key)
+    if game.initial_loading {
+      game.initial_built = game.initial_built + 1
+      if game.initial_total > 0 {
+        let progress = game.initial_built.to_double() /
+          game.initial_total.to_double()
+        if progress >= 1.0 {
+          game.initial_loading = false
+          dom_set_loading(1.0)
+        } else {
+          dom_set_loading(progress)
+        }
+      } else {
+        game.initial_loading = false
+        dom_set_loading(1.0)
+      }
+    }
     built = built + 1
   }
   if game.chunk_queue_cursor >= game.chunk_queue.length() {
@@ -719,6 +741,10 @@ fn refresh_visible_chunks(game : Game) -> Unit {
     game.chunk_queue = []
     game.chunk_queue_cursor = 0
     game.queued_index = @hashmap.new(capacity=coords.length() * 2 + 1)
+    game.initial_loading = true
+    game.initial_total = coords.length()
+    game.initial_built = 0
+    dom_set_loading(0.0)
     for i = 0; i < coords.length(); i = i + 1 {
       let (cx, cz) = coords[i]
       enqueue_chunk(game, cx, cz)
