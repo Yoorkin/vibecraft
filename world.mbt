@@ -370,6 +370,8 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
   let coast = clamp01((0.42 - land) / 0.24)
   let coast_noise = fbm(wx * 0.03 + 19.2, wz * 0.03 - 7.1)
   let coast_cliff = clamp01((coast_noise - 0.65) / 0.2) * coast
+  let raw_scale = self.height.to_double() / 384.0
+  let height_scale = if raw_scale < 3.0 { raw_scale } else { 3.0 }
   let temp = fbm(wx * 0.0015 + 5.2, wz * 0.0015 - 9.7)
   let moist = fbm(wx * 0.0018 - 7.3, wz * 0.0018 + 2.4)
   let karst_noise = fbm(wx * 0.008 + 21.4, wz * 0.008 - 17.2)
@@ -381,41 +383,63 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
   let river_mask = clamp01((river_shape - 0.78) / 0.12)
   let mut biome = biome_from(temp, moist, ridge, land)
   let sea = self.sea_level.to_double()
-  let base_ocean = sea - 34.0
-  let base_land = sea - 8.0
+  let macro_noise = fbm(wx * 0.00022 + 6.7, wz * 0.00022 - 8.9)
+  let macro_shift = (macro_noise * 2.0 - 1.0) * (self.height.to_double() * 0.12)
+  let base_ocean = sea - 34.0 * height_scale + macro_shift * 0.25
+  let base_land = sea - 8.0 * height_scale + macro_shift
   let land_height = base_land +
-    (continent - 0.5) * 22.0 +
-    (hills - 0.5) * 14.0 +
-    (detail - 0.5) * 4.0
+    (continent - 0.5) * 22.0 * height_scale +
+    (hills - 0.5) * 14.0 * height_scale +
+    (detail - 0.5) * 4.0 * height_scale
   let mut height = lerp(base_ocean, land_height, land)
-  height = height + chain_mask * 34.0 + chain_mask * peaks * 26.0
-  height = height + mega_mask * 90.0 + mega_mask * peaks * 32.0
-  height = height + ridge * 12.0 + cliff_mask * 10.0
-  height = height - basin_mask * 18.0
+  height = height +
+    chain_mask * 34.0 * height_scale +
+    chain_mask * peaks * 26.0 * height_scale
+  height = height +
+    mega_mask * 90.0 * height_scale +
+    mega_mask * peaks * 32.0 * height_scale
+  height = height +
+    ridge * 12.0 * height_scale +
+    cliff_mask * 10.0 * height_scale
+  height = height - basin_mask * 18.0 * height_scale
   if karst_mask > 0.4 && land > 0.3 {
-    height = terrace(height + karst_mask * 10.0, 1.6)
+    height = terrace(height + karst_mask * 10.0 * height_scale, 1.6)
     let sink = fbm(wx * 0.05 + 3.1, wz * 0.05 - 6.7)
     if sink > 0.72 {
-      height = height - (sink - 0.72) * 18.0 * karst_mask
+      height = height - (sink - 0.72) * 18.0 * karst_mask * height_scale
     }
   }
   if river_mask > 0.0 && land > 0.22 {
-    let river_depth = river_mask * (10.0 + (1.0 - chain_mask) * 6.0)
+    let river_depth = river_mask *
+      (10.0 + (1.0 - chain_mask) * 6.0) *
+      height_scale
     height = height - river_depth
   }
   match biome {
-    Biome::Ocean => height = height - 8.0 - land * 6.0
+    Biome::Ocean => height = height - (8.0 + land * 6.0) * height_scale
     Biome::Mesa => {
-      height = height + ridge * 10.0 + (hills - 0.5) * 5.0
+      height = height +
+        ridge * 10.0 * height_scale +
+        (hills - 0.5) * 5.0 * height_scale
       height = terrace(height, 3.0)
     }
     Biome::Desert =>
-      height = height + (hills - 0.5) * 4.0 + (detail - 0.5) * 1.5
+      height = height +
+        (hills - 0.5) * 4.0 * height_scale +
+        (detail - 0.5) * 1.5 * height_scale
     Biome::Forest =>
-      height = height + (hills - 0.5) * 6.0 + (detail - 0.5) * 3.0
-    Biome::Plains => height = lerp(height, sea + 6.0, 0.6)
-    Biome::Hills => height = height + ridge * 8.0 + (hills - 0.5) * 4.0
-    Biome::Mountains => height = height + ridge * 18.0 + peaks * 10.0
+      height = height +
+        (hills - 0.5) * 6.0 * height_scale +
+        (detail - 0.5) * 3.0 * height_scale
+    Biome::Plains => height = lerp(height, sea + 6.0 * height_scale, 0.6)
+    Biome::Hills =>
+      height = height +
+        ridge * 8.0 * height_scale +
+        (hills - 0.5) * 4.0 * height_scale
+    Biome::Mountains =>
+      height = height +
+        ridge * 18.0 * height_scale +
+        peaks * 10.0 * height_scale
     Biome::River => height = height
     Biome::Snow => height = height
     Biome::Karst => height = height
@@ -432,20 +456,20 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
   if karst_mask > 0.68 && land > 0.32 && temp > 0.4 && temp < 0.75 {
     biome = Biome::Karst
   }
-  if height > sea + 34.0 {
+  if height > sea + 34.0 * height_scale {
     biome = Biome::Snow
   }
   if cliff_mask > 0.6 {
-    height = terrace(height, 2.0) + cliff_mask * 4.0
+    height = terrace(height, 2.0) + cliff_mask * 4.0 * height_scale
   }
   if coast > 0.0 && coast_cliff < 0.35 {
-    height = lerp(height, sea + 2.0, coast * 0.7)
+    height = lerp(height, sea + 2.0 * height_scale, coast * 0.7)
   } else if coast_cliff > 0.2 {
-    height = terrace(height + coast_cliff * 10.0, 2.0)
+    height = terrace(height + coast_cliff * 10.0 * height_scale, 2.0)
   }
   let lake = fbm(wx * 0.01 + 13.7, wz * 0.01 - 4.4)
   if land > 0.2 && lake > 0.76 {
-    height = height - (lake - 0.76) * 20.0
+    height = height - (lake - 0.76) * 20.0 * height_scale
   }
   let mut h = height.floor().to_int()
   if h < 4 {
@@ -472,6 +496,11 @@ fn surface_blocks(
   let biome = info.biome
   let ridge = info.ridge
   let moist = info.moist
+  let raw_scale = world.height.to_double() / 384.0
+  let height_scale = if raw_scale < 3.0 { raw_scale } else { 3.0 }
+  let scaled30 = (30.0 * height_scale).to_int()
+  let scaled28 = (28.0 * height_scale).to_int()
+  let scaled34 = (34.0 * height_scale).to_int()
   let mut top_block = match biome {
     Biome::Ocean => Block::Sand
     Biome::Desert => Block::Sand
@@ -503,7 +532,7 @@ fn surface_blocks(
   }
   let sea = world.sea_level
   if biome == Biome::Mountains {
-    if h > sea + 30 {
+    if h > sea + scaled30 {
       top_block = Block::Stone
       mid_block = Block::Stone
     } else {
@@ -511,11 +540,11 @@ fn surface_blocks(
       mid_block = Block::Dirt
     }
   }
-  if biome != Biome::Snow && ridge > 0.88 && h > sea + 28 {
+  if biome != Biome::Snow && ridge > 0.88 && h > sea + scaled28 {
     top_block = Block::Stone
     mid_block = Block::Stone
   }
-  let snow_line = sea + 34
+  let snow_line = sea + scaled34
   if h >= snow_line {
     top_block = Block::Snow
     mid_block = Block::Stone

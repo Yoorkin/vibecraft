@@ -114,7 +114,7 @@ fn init_game() -> Unit {
   dom_init_fly_toggle()
   dom_init_random_teleport()
   let renderer = renderer_init(canvas)
-  let world = World::new(384, 16, 32)
+  let world = World::new(2000, 16, 32)
   let chunk_size = 16
   let view_distance = 20
   let detail_distance = if view_distance > 6 {
