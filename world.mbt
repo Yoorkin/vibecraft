@@ -456,7 +456,7 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
   if karst_mask > 0.68 && land > 0.32 && temp > 0.4 && temp < 0.75 {
     biome = Biome::Karst
   }
-  if height > sea + 32.0 * relief_scale {
+  if height > sea + 46.0 * relief_scale {
     biome = Biome::Snow
   }
   if coast > 0.0 {
@@ -499,7 +499,7 @@ fn surface_blocks(
   let relief_scale = if raw_scale < 2.0 { raw_scale } else { 2.0 }
   let scaled30 = (30.0 * relief_scale).to_int()
   let scaled28 = (28.0 * relief_scale).to_int()
-  let scaled34 = (34.0 * relief_scale).to_int()
+  let scaled48 = (48.0 * relief_scale).to_int()
   let mut top_block = match biome {
     Biome::Ocean => Block::Sand
     Biome::Desert => Block::Sand
@@ -543,7 +543,7 @@ fn surface_blocks(
     top_block = Block::Stone
     mid_block = Block::Stone
   }
-  let snow_line = sea + scaled34
+  let snow_line = sea + scaled48
   if h >= snow_line {
     top_block = Block::Snow
     mid_block = Block::Stone
