@@ -37,6 +37,7 @@ priv struct ColumnInfo {
   biome : Biome
   ridge : Double
   moist : Double
+  coast : Double
 }
 
 ///|
@@ -45,6 +46,7 @@ priv struct RawColumn {
   biome : Biome
   ridge : Double
   moist : Double
+  coast : Double
 }
 
 ///|
@@ -432,9 +434,9 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let cliff = ridged(wx * 0.017, wz * 0.017)
   let cliff_mask = clamp01((cliff - 0.82) / 0.2)
   let cliff_strength = cliff_mask * cliff_mask
-  let coast = clamp01((0.42 - land) / 0.24)
+  let coast = clamp01((0.36 - land) / 0.18)
   let coast_noise = fbm(wx * 0.022 + 19.2, wz * 0.022 - 7.1)
-  let coast_cliff = clamp01((coast_noise - 0.78) / 0.2) * coast
+  let coast_cliff = clamp01((coast_noise - 0.8) / 0.2) * coast
   let raw_scale = self.height.to_double() / 384.0
   let relief_scale = if raw_scale < 2.0 { raw_scale } else { 2.0 }
   let detail_scale = if raw_scale < 1.0 { raw_scale } else { 1.0 }
@@ -442,15 +444,13 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let moist = fbm(wx * 0.0018 - 7.3, wz * 0.0018 + 2.4)
   let karst_noise = fbm(wx * 0.008 + 21.4, wz * 0.008 - 17.2)
   let karst_mask = clamp01((karst_noise - 0.55) / 0.25)
-  let basin_noise = fbm(wx * 0.00085 - 14.1, wz * 0.00085 + 9.2)
-  let basin_mask = clamp01((0.38 - basin_noise) / 0.2)
   let river_noise = fbm(wx * 0.002 + 12.4, wz * 0.002 - 8.2)
   let river_shape = 1.0 - (river_noise * 2.0 - 1.0).abs()
   let river_mask = clamp01((river_shape - 0.78) / 0.12)
   let mut biome = biome_from(temp, moist, ridge, land)
   let sea = self.sea_level.to_double()
-  let macro_base = fbm(wx * 0.000125 + 12.3, wz * 0.000125 - 9.4)
-  let macro_slope = fbm(wx * 0.00004 - 5.7, wz * 0.00004 + 3.9)
+  let macro_base = fbm(wx * 0.000042 + 12.3, wz * 0.000042 - 9.4)
+  let macro_slope = fbm(wx * 0.000014 - 5.7, wz * 0.000014 + 3.9)
   let macro_shift = (macro_base * 2.0 - 1.0) * (self.height.to_double() * 0.16) +
     (macro_slope * 2.0 - 1.0) * (self.height.to_double() * 0.06)
   let macro_bias = self.height.to_double() * 0.16
@@ -458,21 +458,19 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let base_land = sea + 65.0 * relief_scale + macro_shift + macro_bias
   let land_height = base_land +
     (continent - 0.5) * 14.0 * relief_scale +
-    (hills - 0.5) * 7.0 * detail_scale +
-    (detail - 0.5) * 2.2 * detail_scale
+    (hills - 0.5) * 1.75 * detail_scale +
+    (detail - 0.5) * 0.55 * detail_scale
   let mut height = lerp(base_ocean, land_height, land)
   height = height +
     chain_mask * 14.0 * relief_scale +
-    chain_mask * peaks * 9.0 * relief_scale
+    chain_mask * peaks * 2.25 * relief_scale
   height = height +
     mega_mask * 30.0 * relief_scale +
-    mega_mask * peaks * 12.0 * relief_scale
-  height = height + ridge * 4.0 * detail_scale
+    mega_mask * peaks * 3.0 * relief_scale
+  height = height + ridge * 1.0 * detail_scale
   if cliff_strength > 0.0 {
     height = lerp(height, land_height, cliff_strength * 0.3)
   }
-  let basin_falloff = clamp01((sea + 160.0 - height) / 160.0)
-  height = height - basin_mask * 10.0 * relief_scale * basin_falloff
   if karst_mask > 0.45 && land > 0.3 {
     let karst_scale = clamp01((sea + 180.0 - height) / 180.0)
     if karst_scale > 0.0 {
@@ -503,19 +501,19 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
     }
     Biome::Desert =>
       height = height +
-        (hills - 0.5) * 3.0 * detail_scale +
-        (detail - 0.5) * 1.2 * detail_scale
+        (hills - 0.5) * 0.75 * detail_scale +
+        (detail - 0.5) * 0.3 * detail_scale
     Biome::Forest =>
       height = height +
-        (hills - 0.5) * 4.5 * detail_scale +
-        (detail - 0.5) * 2.0 * detail_scale
+        (hills - 0.5) * 1.1 * detail_scale +
+        (detail - 0.5) * 0.5 * detail_scale
     Biome::Plains => height = lerp(height, sea + 5.0 * relief_scale, 0.75)
     Biome::Hills =>
       height = height +
-        ridge * 6.0 * detail_scale +
-        (hills - 0.5) * 3.0 * detail_scale
+        ridge * 1.5 * detail_scale +
+        (hills - 0.5) * 0.75 * detail_scale
     Biome::Mountains =>
-      height = height + ridge * 12.0 * relief_scale + peaks * 8.0 * relief_scale
+      height = height + ridge * 3.0 * relief_scale + peaks * 2.0 * relief_scale
     Biome::River => height = height
     Biome::Snow => height = height
     Biome::Karst => height = height
@@ -536,10 +534,10 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
     biome = Biome::Snow
   }
   if coast > 0.0 {
-    let beach_height = sea + 2.0 * relief_scale
-    height = lerp(height, beach_height, coast * 0.7)
-    if coast_cliff > 0.4 {
-      height = height + coast_cliff * 4.0 * relief_scale
+    let beach_height = sea + 1.5 * relief_scale
+    height = lerp(height, beach_height, coast * 0.5)
+    if coast_cliff > 0.45 {
+      height = height + coast_cliff * 3.5 * relief_scale
     }
   }
   let lake = fbm(wx * 0.01 + 13.7, wz * 0.01 - 4.4)
@@ -561,14 +559,20 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   } else if h > max_h {
     h = max_h
   }
-  { height: h, biome, ridge, moist }
+  { height: h, biome, ridge, moist, coast }
 }
 
 ///|
 fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
   let raw = self.column_raw_info(x, z)
   let h = self.height_for(x, z)
-  { height: h, biome: raw.biome, ridge: raw.ridge, moist: raw.moist }
+  {
+    height: h,
+    biome: raw.biome,
+    ridge: raw.ridge,
+    moist: raw.moist,
+    coast: raw.coast,
+  }
 }
 
 ///|
@@ -684,6 +688,7 @@ fn surface_blocks(
   let biome = info.biome
   let ridge = info.ridge
   let moist = info.moist
+  let coast = info.coast
   let raw_scale = world.height.to_double() / 384.0
   let relief_scale = if raw_scale < 2.0 { raw_scale } else { 2.0 }
   let scaled30 = (30.0 * relief_scale).to_int()
@@ -713,10 +718,13 @@ fn surface_blocks(
     Biome::Snow => Block::Stone
     Biome::Karst => Block::Stone
   }
-  let is_shore = h <= world.sea_level + 1
+  let is_shore = h <= world.sea_level + 1 && coast > 0.2
   if is_shore {
-    top_block = Block::Sand
-    mid_block = Block::Sand
+    let shore_strength = clamp01((coast - 0.2) / 0.4)
+    if shore_strength > 0.0 {
+      top_block = Block::Sand
+      mid_block = Block::Sand
+    }
   }
   let sea = world.sea_level
   if biome == Biome::Mountains {
