@@ -425,8 +425,8 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let land = clamp01((continentalness + 0.3) / 0.55)
   let hills_raw = fbm(wx * 0.018, wz * 0.018)
   let detail_raw = fbm(wx * 0.085, wz * 0.085)
-  let hills = smoothstep(hills_raw)
-  let detail = smoothstep(detail_raw)
+  let hills = (smoothstep(hills_raw) + hills_raw) * 0.5
+  let detail = (smoothstep(detail_raw) + detail_raw) * 0.5
   let ridge = ridged(wx * 0.0065, wz * 0.0065)
   let peaks = ridged(wx * 0.012, wz * 0.012)
   let mega = ridged(wx * 0.0008 + 2.5, wz * 0.0008 - 5.4)
@@ -451,8 +451,8 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let river_mask = clamp01((river_shape - 0.78) / 0.12)
   let mut biome = biome_from(temp, moist, ridge, land)
   let sea = self.sea_level.to_double()
-  let macro_base = fbm(wx * 0.0000105 + 12.3, wz * 0.0000105 - 9.4)
-  let macro_slope = fbm(wx * 0.0000035 - 5.7, wz * 0.0000035 + 3.9)
+  let macro_base = fbm(wx * 0.00000105 + 12.3, wz * 0.00000105 - 9.4)
+  let macro_slope = fbm(wx * 0.00000035 - 5.7, wz * 0.00000035 + 3.9)
   let macro_shift = (macro_base * 2.0 - 1.0) * (self.height.to_double() * 0.16) +
     (macro_slope * 2.0 - 1.0) * (self.height.to_double() * 0.06)
   let macro_bias = self.height.to_double() * 0.16
@@ -460,13 +460,13 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let base_land = sea + 65.0 * relief_scale + macro_shift + macro_bias
   let bump_scale = lerp(
     1.0,
-    1.4,
-    clamp01((base_land - sea) / (self.height.to_double() * 0.5)),
+    1.8,
+    clamp01((base_land - sea) / (self.height.to_double() * 0.6)),
   )
   let land_height = base_land +
     (continent - 0.5) * 14.0 * relief_scale +
-    (hills - 0.5) * 1.0 * detail_scale * bump_scale +
-    (detail - 0.5) * 0.25 * detail_scale * bump_scale
+    (hills - 0.5) * 1.2 * detail_scale * bump_scale +
+    (detail - 0.5) * 0.35 * detail_scale * bump_scale
   let mut height = lerp(base_ocean, land_height, land)
   height = height +
     chain_mask * 14.0 * relief_scale +
@@ -507,17 +507,17 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
     }
     Biome::Desert =>
       height = height +
-        (hills - 0.5) * 0.4 * detail_scale * bump_scale +
-        (detail - 0.5) * 0.18 * detail_scale * bump_scale
+        (hills - 0.5) * 0.5 * detail_scale * bump_scale +
+        (detail - 0.5) * 0.22 * detail_scale * bump_scale
     Biome::Forest =>
       height = height +
-        (hills - 0.5) * 0.65 * detail_scale * bump_scale +
-        (detail - 0.5) * 0.28 * detail_scale * bump_scale
+        (hills - 0.5) * 0.75 * detail_scale * bump_scale +
+        (detail - 0.5) * 0.32 * detail_scale * bump_scale
     Biome::Plains => height = lerp(height, sea + 5.0 * relief_scale, 0.75)
     Biome::Hills =>
       height = height +
-        ridge * 1.0 * detail_scale * bump_scale +
-        (hills - 0.5) * 0.5 * detail_scale * bump_scale
+        ridge * 1.2 * detail_scale * bump_scale +
+        (hills - 0.5) * 0.6 * detail_scale * bump_scale
     Biome::Mountains =>
       height = height + ridge * 2.4 * relief_scale + peaks * 1.5 * relief_scale
     Biome::River => height = height
