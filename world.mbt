@@ -426,15 +426,15 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let ridge = ridged(wx * 0.0065, wz * 0.0065)
   let peaks = ridged(wx * 0.012, wz * 0.012)
   let mega = ridged(wx * 0.0008 + 2.5, wz * 0.0008 - 5.4)
-  let mega_mask = clamp01((mega - 0.7) / 0.2)
+  let mega_mask = clamp01((mega - 0.78) / 0.16)
   let mountain_chain = ridged(wx * 0.0019 + 7.4, wz * 0.0019 - 3.1)
   let chain_mask = clamp01((mountain_chain - 0.55) / 0.35)
   let cliff = ridged(wx * 0.017, wz * 0.017)
-  let cliff_mask = clamp01((cliff - 0.78) / 0.18)
+  let cliff_mask = clamp01((cliff - 0.82) / 0.2)
   let cliff_strength = cliff_mask * cliff_mask
   let coast = clamp01((0.42 - land) / 0.24)
   let coast_noise = fbm(wx * 0.022 + 19.2, wz * 0.022 - 7.1)
-  let coast_cliff = clamp01((coast_noise - 0.72) / 0.2) * coast
+  let coast_cliff = clamp01((coast_noise - 0.78) / 0.2) * coast
   let raw_scale = self.height.to_double() / 384.0
   let relief_scale = if raw_scale < 2.0 { raw_scale } else { 2.0 }
   let detail_scale = if raw_scale < 1.0 { raw_scale } else { 1.0 }
@@ -451,32 +451,40 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let sea = self.sea_level.to_double()
   let macro_base = fbm(wx * 0.000125 + 12.3, wz * 0.000125 - 9.4)
   let macro_slope = fbm(wx * 0.00004 - 5.7, wz * 0.00004 + 3.9)
-  let macro_shift = (macro_base * 2.0 - 1.0) * (self.height.to_double() * 0.2) +
-    (macro_slope * 2.0 - 1.0) * (self.height.to_double() * 0.1)
-  let macro_bias = self.height.to_double() * 0.18
-  let base_ocean = sea - 140.0 * relief_scale + macro_shift * 0.5
-  let base_land = sea + 70.0 * relief_scale + macro_shift + macro_bias
+  let macro_shift = (macro_base * 2.0 - 1.0) * (self.height.to_double() * 0.16) +
+    (macro_slope * 2.0 - 1.0) * (self.height.to_double() * 0.06)
+  let macro_bias = self.height.to_double() * 0.16
+  let base_ocean = sea - 130.0 * relief_scale + macro_shift * 0.45
+  let base_land = sea + 65.0 * relief_scale + macro_shift + macro_bias
   let land_height = base_land +
-    (continent - 0.5) * 18.0 * relief_scale +
-    (hills - 0.5) * 12.0 * detail_scale +
-    (detail - 0.5) * 3.5 * detail_scale
+    (continent - 0.5) * 14.0 * relief_scale +
+    (hills - 0.5) * 7.0 * detail_scale +
+    (detail - 0.5) * 2.2 * detail_scale
   let mut height = lerp(base_ocean, land_height, land)
   height = height +
-    chain_mask * 20.0 * relief_scale +
-    chain_mask * peaks * 14.0 * relief_scale
+    chain_mask * 14.0 * relief_scale +
+    chain_mask * peaks * 9.0 * relief_scale
   height = height +
-    mega_mask * 44.0 * relief_scale +
-    mega_mask * peaks * 18.0 * relief_scale
-  height = height + ridge * 7.0 * detail_scale
+    mega_mask * 30.0 * relief_scale +
+    mega_mask * peaks * 12.0 * relief_scale
+  height = height + ridge * 4.0 * detail_scale
   if cliff_strength > 0.0 {
-    height = lerp(height, land_height, cliff_strength * 0.45)
+    height = lerp(height, land_height, cliff_strength * 0.3)
   }
-  height = height - basin_mask * 14.0 * relief_scale
+  let basin_falloff = clamp01((sea + 160.0 - height) / 160.0)
+  height = height - basin_mask * 10.0 * relief_scale * basin_falloff
   if karst_mask > 0.45 && land > 0.3 {
-    height = terrace(height + karst_mask * 6.0 * detail_scale, 2.8)
-    let sink = fbm(wx * 0.05 + 3.1, wz * 0.05 - 6.7)
-    if sink > 0.74 {
-      height = height - (sink - 0.74) * 12.0 * karst_mask * detail_scale
+    let karst_scale = clamp01((sea + 180.0 - height) / 180.0)
+    if karst_scale > 0.0 {
+      height = terrace(
+        height + karst_mask * 6.0 * detail_scale * karst_scale,
+        2.8,
+      )
+      let sink = fbm(wx * 0.05 + 3.1, wz * 0.05 - 6.7)
+      if sink > 0.74 {
+        height = height -
+          (sink - 0.74) * 10.0 * karst_mask * detail_scale * karst_scale
+      }
     }
   }
   if river_mask > 0.0 && land > 0.22 {
@@ -530,13 +538,14 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   if coast > 0.0 {
     let beach_height = sea + 2.0 * relief_scale
     height = lerp(height, beach_height, coast * 0.7)
-    if coast_cliff > 0.35 {
-      height = height + coast_cliff * 6.0 * relief_scale
+    if coast_cliff > 0.4 {
+      height = height + coast_cliff * 4.0 * relief_scale
     }
   }
   let lake = fbm(wx * 0.01 + 13.7, wz * 0.01 - 4.4)
   if land > 0.2 && lake > 0.72 {
-    height = height - (lake - 0.72) * 12.0 * detail_scale
+    let lake_scale = clamp01((sea + 120.0 - height) / 120.0)
+    height = height - (lake - 0.72) * 10.0 * detail_scale * lake_scale
   }
   if land > 0.25 && height < sea + 2.0 {
     let lift = clamp01((land - 0.25) / 0.2)
@@ -600,9 +609,9 @@ fn World::build_height_map(self : World, cx : Int, cz : Int) -> Array[Int] {
       raw[lx + size * lz] = info.height
     }
   }
-  let max_slope = 3.0
+  let max_slope = 2.5
   let heights = raw
-  for _iter = 0; _iter < 4; _iter = _iter + 1 {
+  for _iter = 0; _iter < 5; _iter = _iter + 1 {
     for lz = 1; lz < size - 1; lz = lz + 1 {
       for lx = 1; lx < size - 1; lx = lx + 1 {
         let idx = lx + size * lz
