@@ -453,8 +453,9 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let macro_slope = fbm(wx * 0.000012 - 5.7, wz * 0.000012 + 3.9)
   let macro_shift = (macro_base * 2.0 - 1.0) * (self.height.to_double() * 0.35) +
     (macro_slope * 2.0 - 1.0) * (self.height.to_double() * 0.18)
-  let base_ocean = sea - 200.0 * relief_scale + macro_shift * 0.55
-  let base_land = sea - 140.0 * relief_scale + macro_shift
+  let macro_bias = self.height.to_double() * 0.2
+  let base_ocean = sea - 160.0 * relief_scale + macro_shift * 0.55
+  let base_land = sea + 60.0 * relief_scale + macro_shift + macro_bias
   let land_height = base_land +
     (continent - 0.5) * 18.0 * relief_scale +
     (hills - 0.5) * 12.0 * detail_scale +
@@ -536,6 +537,11 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let lake = fbm(wx * 0.01 + 13.7, wz * 0.01 - 4.4)
   if land > 0.2 && lake > 0.72 {
     height = height - (lake - 0.72) * 12.0 * detail_scale
+  }
+  if land > 0.25 && height < sea + 2.0 {
+    height = sea + 2.0
+  } else if land < 0.2 && height > sea - 2.0 {
+    height = sea - 2.0
   }
   let mut h = height
   let max_h = self.height.to_double()
