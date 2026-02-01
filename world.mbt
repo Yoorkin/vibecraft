@@ -478,21 +478,20 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   if cliff_strength > 0.0 {
     height = lerp(height, land_height, cliff_strength * 0.3)
   }
-  if karst_mask > 0.45 && land > 0.3 {
-    let karst_scale = clamp01((sea + 180.0 - height) / 180.0)
-    if karst_scale > 0.0 {
-      height = terrace(
-        height + karst_mask * 6.0 * detail_scale * karst_scale,
-        2.8,
-      )
-      let sink = fbm(wx * 0.05 + 3.1, wz * 0.05 - 6.7)
-      if sink > 0.74 {
-        height = height -
-          (sink - 0.74) * 10.0 * karst_mask * detail_scale * karst_scale
-      }
+  let highland_limit = sea + 60.0 * relief_scale
+  if karst_mask > 0.45 && land > 0.3 && height < highland_limit {
+    let karst_scale = clamp01((highland_limit - height) / highland_limit)
+    height = terrace(
+      height + karst_mask * 6.0 * detail_scale * karst_scale,
+      2.8,
+    )
+    let sink = fbm(wx * 0.05 + 3.1, wz * 0.05 - 6.7)
+    if sink > 0.74 {
+      height = height -
+        (sink - 0.74) * 10.0 * karst_mask * detail_scale * karst_scale
     }
   }
-  if river_mask > 0.0 && land > 0.22 {
+  if river_mask > 0.0 && land > 0.22 && height < sea + 80.0 * relief_scale {
     let river_depth = river_mask *
       (8.0 + (1.0 - chain_mask) * 4.0) *
       detail_scale
@@ -548,8 +547,10 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
     }
   }
   let lake = fbm(wx * 0.01 + 13.7, wz * 0.01 - 4.4)
-  if land > 0.2 && lake > 0.72 {
-    let lake_scale = clamp01((sea + 120.0 - height) / 120.0)
+  if land > 0.2 && lake > 0.72 && height < sea + 40.0 * relief_scale {
+    let lake_scale = clamp01(
+      (sea + 40.0 * relief_scale - height) / (40.0 * relief_scale),
+    )
     height = height - (lake - 0.72) * 10.0 * detail_scale * lake_scale
   }
   if land > 0.25 && height < sea + 2.0 {
