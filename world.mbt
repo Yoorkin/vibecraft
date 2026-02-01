@@ -713,6 +713,14 @@ fn surface_blocks(
       mid_block = Block::Dirt
     }
   }
+  if h <= sea {
+    let base = if biome == Biome::River { Block::Clay } else { Block::Sand }
+    top_block = base
+    mid_block = base
+  } else if h <= sea + 2 {
+    top_block = Block::Sand
+    mid_block = Block::Sand
+  }
   (top_block, mid_block)
 }
 
