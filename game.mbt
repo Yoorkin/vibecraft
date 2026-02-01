@@ -878,6 +878,24 @@ fn build_chunk_keep_set(
 }
 
 ///|
+fn build_height_keep_set(
+  game : Game,
+  coords : Array[(Int, Int)],
+) -> @hashmap.HashMap[String, Bool] {
+  let cache_dist = game.detail_distance + 1
+  let keep = @hashmap.new(capacity=coords.length() + 1)
+  for i = 0; i < coords.length(); i = i + 1 {
+    let (cx, cz) = coords[i]
+    let dx = (cx - game.current_cx).abs()
+    let dz = (cz - game.current_cz).abs()
+    if dx <= cache_dist && dz <= cache_dist {
+      keep.set(chunk_key(cx, cz), true)
+    }
+  }
+  keep
+}
+
+///|
 fn enqueue_surface(game : Game, cx : Int, cz : Int) -> Unit {
   let key = chunk_key(cx, cz)
   match game.queued_surface.get(key) {
@@ -1034,7 +1052,9 @@ fn refresh_visible_chunks(game : Game) -> Unit {
       }
     }
     let keep = build_chunk_keep_set(game, coords)
+    let keep_height = build_height_keep_set(game, coords)
     game.world.prune_chunks(keep)
+    game.world.prune_height_cache(keep_height)
     return
   }
   let visible_set = @hashmap.new(capacity=coords.length() * 2 + 1)
@@ -1133,7 +1153,9 @@ fn refresh_visible_chunks(game : Game) -> Unit {
     }
   }
   let keep = build_chunk_keep_set(game, coords)
+  let keep_height = build_height_keep_set(game, coords)
   game.world.prune_chunks(keep)
+  game.world.prune_height_cache(keep_height)
 }
 
 ///|

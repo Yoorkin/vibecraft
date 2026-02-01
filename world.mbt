@@ -40,6 +40,14 @@ priv struct ColumnInfo {
 }
 
 ///|
+priv struct RawColumn {
+  height : Double
+  biome : Biome
+  ridge : Double
+  moist : Double
+}
+
+///|
 priv struct Chunk {
   blocks : Array[Block]
   modified : Bool
@@ -53,11 +61,13 @@ priv struct World {
   sea_level : Int
   chunks : @hashmap.HashMap[String, Chunk]
   mut chunk_keys : Array[String]
+  height_cache : @hashmap.HashMap[String, Array[Int]]
+  mut height_keys : Array[String]
 }
 
 ///|
 fn World::new(height : Int, chunk_size : Int, section_height : Int) -> World {
-  let sea_level = height / 2
+  let sea_level = 240
   {
     chunk_size,
     height,
@@ -65,6 +75,8 @@ fn World::new(height : Int, chunk_size : Int, section_height : Int) -> World {
     sea_level,
     chunks: @hashmap.new(capacity=64),
     chunk_keys: [],
+    height_cache: @hashmap.new(capacity=64),
+    height_keys: [],
   }
 }
 
@@ -252,6 +264,27 @@ fn World::prune_chunks(
 }
 
 ///|
+fn World::prune_height_cache(
+  self : World,
+  keep : @hashmap.HashMap[String, Bool],
+) -> Unit {
+  let next_keys : Array[String] = []
+  for i = 0; i < self.height_keys.length(); i = i + 1 {
+    let key = self.height_keys[i]
+    match self.height_cache.get(key) {
+      Some(_) =>
+        if keep.contains(key) {
+          next_keys.push(key)
+        } else {
+          self.height_cache.remove(key)
+        }
+      None => ()
+    }
+  }
+  self.height_keys = next_keys
+}
+
+///|
 fn World::get(self : World, x : Int, y : Int, z : Int) -> Block {
   if y < 0 {
     Block::Bedrock
@@ -381,7 +414,7 @@ fn World::get_range(
 }
 
 ///|
-fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
+fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let fx = x.to_double()
   let fz = z.to_double()
   let (wx, wz) = warp_coords(fx, fz)
@@ -504,18 +537,123 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
   if land > 0.2 && lake > 0.72 {
     height = height - (lake - 0.72) * 12.0 * detail_scale
   }
-  let mut h = height.floor().to_int()
-  if h < 4 {
-    h = 4
-  } else if h > self.height - 3 {
-    h = self.height - 3
+  let mut h = height
+  let max_h = self.height.to_double()
+  if h < 0.0 {
+    h = 0.0
+  } else if h > max_h {
+    h = max_h
   }
   { height: h, biome, ridge, moist }
 }
 
 ///|
+fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
+  let raw = self.column_raw_info(x, z)
+  let h = self.height_for(x, z)
+  { height: h, biome: raw.biome, ridge: raw.ridge, moist: raw.moist }
+}
+
+///|
 fn World::height_at(self : World, x : Int, z : Int) -> Int {
-  self.column_info(x, z).height
+  self.height_for(x, z)
+}
+
+///|
+fn World::height_for(self : World, x : Int, z : Int) -> Int {
+  let cx = div_floor(x, self.chunk_size)
+  let cz = div_floor(z, self.chunk_size)
+  let lx = mod_floor(x, self.chunk_size)
+  let lz = mod_floor(z, self.chunk_size)
+  let key = chunk_key(cx, cz)
+  let heights = match self.height_cache.get(key) {
+    Some(map) => map
+    None => {
+      let map = self.build_height_map(cx, cz)
+      self.height_cache.set(key, map)
+      self.height_keys.push(key)
+      map
+    }
+  }
+  heights[lx + self.chunk_size * lz]
+}
+
+///|
+fn World::build_height_map(self : World, cx : Int, cz : Int) -> Array[Int] {
+  let size = self.chunk_size + 2
+  let raw = Array::make(size * size, 0.0)
+  let x0 = cx * self.chunk_size - 1
+  let z0 = cz * self.chunk_size - 1
+  for lz = 0; lz < size; lz = lz + 1 {
+    for lx = 0; lx < size; lx = lx + 1 {
+      let gx = x0 + lx
+      let gz = z0 + lz
+      let info = self.column_raw_info(gx, gz)
+      raw[lx + size * lz] = info.height
+    }
+  }
+  let max_slope = 3.0
+  let heights = raw
+  for _iter = 0; _iter < 4; _iter = _iter + 1 {
+    for lz = 1; lz < size - 1; lz = lz + 1 {
+      for lx = 1; lx < size - 1; lx = lx + 1 {
+        let idx = lx + size * lz
+        let n = heights[idx - size]
+        let s = heights[idx + size]
+        let w = heights[idx - 1]
+        let e = heights[idx + 1]
+        let mut min_allowed = n - max_slope
+        let mut max_allowed = n + max_slope
+        let s_min = s - max_slope
+        let s_max = s + max_slope
+        let w_min = w - max_slope
+        let w_max = w + max_slope
+        let e_min = e - max_slope
+        let e_max = e + max_slope
+        if s_min > min_allowed {
+          min_allowed = s_min
+        }
+        if w_min > min_allowed {
+          min_allowed = w_min
+        }
+        if e_min > min_allowed {
+          min_allowed = e_min
+        }
+        if s_max < max_allowed {
+          max_allowed = s_max
+        }
+        if w_max < max_allowed {
+          max_allowed = w_max
+        }
+        if e_max < max_allowed {
+          max_allowed = e_max
+        }
+        let mut h = heights[idx]
+        if min_allowed > max_allowed {
+          h = (min_allowed + max_allowed) * 0.5
+        } else if h < min_allowed {
+          h = min_allowed
+        } else if h > max_allowed {
+          h = max_allowed
+        }
+        heights[idx] = h
+      }
+    }
+  }
+  let out = Array::make(self.chunk_size * self.chunk_size, 0)
+  for lz = 0; lz < self.chunk_size; lz = lz + 1 {
+    for lx = 0; lx < self.chunk_size; lx = lx + 1 {
+      let idx = lx + 1 + size * (lz + 1)
+      let mut h = heights[idx].floor().to_int()
+      if h < 4 {
+        h = 4
+      } else if h > self.height - 3 {
+        h = self.height - 3
+      }
+      out[lx + self.chunk_size * lz] = h
+    }
+  }
+  out
 }
 
 ///|
