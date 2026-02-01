@@ -420,7 +420,7 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let (wx, wz) = warp_coords(fx, fz)
   let continent = fbm(wx * 0.0011, wz * 0.0011)
   let continentalness = continent * 2.0 - 1.0
-  let land = clamp01((continentalness + 0.2) / 0.55)
+  let land = clamp01((continentalness + 0.3) / 0.55)
   let hills = fbm(wx * 0.018, wz * 0.018)
   let detail = fbm(wx * 0.085, wz * 0.085)
   let ridge = ridged(wx * 0.0065, wz * 0.0065)
@@ -449,13 +449,13 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
   let river_mask = clamp01((river_shape - 0.78) / 0.12)
   let mut biome = biome_from(temp, moist, ridge, land)
   let sea = self.sea_level.to_double()
-  let macro_base = fbm(wx * 0.00004 + 12.3, wz * 0.00004 - 9.4)
-  let macro_slope = fbm(wx * 0.000012 - 5.7, wz * 0.000012 + 3.9)
-  let macro_shift = (macro_base * 2.0 - 1.0) * (self.height.to_double() * 0.35) +
-    (macro_slope * 2.0 - 1.0) * (self.height.to_double() * 0.18)
-  let macro_bias = self.height.to_double() * 0.2
-  let base_ocean = sea - 160.0 * relief_scale + macro_shift * 0.55
-  let base_land = sea + 60.0 * relief_scale + macro_shift + macro_bias
+  let macro_base = fbm(wx * 0.000125 + 12.3, wz * 0.000125 - 9.4)
+  let macro_slope = fbm(wx * 0.00004 - 5.7, wz * 0.00004 + 3.9)
+  let macro_shift = (macro_base * 2.0 - 1.0) * (self.height.to_double() * 0.2) +
+    (macro_slope * 2.0 - 1.0) * (self.height.to_double() * 0.1)
+  let macro_bias = self.height.to_double() * 0.18
+  let base_ocean = sea - 140.0 * relief_scale + macro_shift * 0.5
+  let base_land = sea + 70.0 * relief_scale + macro_shift + macro_bias
   let land_height = base_land +
     (continent - 0.5) * 18.0 * relief_scale +
     (hills - 0.5) * 12.0 * detail_scale +
@@ -539,9 +539,11 @@ fn World::column_raw_info(self : World, x : Int, z : Int) -> RawColumn {
     height = height - (lake - 0.72) * 12.0 * detail_scale
   }
   if land > 0.25 && height < sea + 2.0 {
-    height = sea + 2.0
+    let lift = clamp01((land - 0.25) / 0.2)
+    height = lerp(height, sea + 2.0, lift)
   } else if land < 0.2 && height > sea - 2.0 {
-    height = sea - 2.0
+    let sink = clamp01((0.2 - land) / 0.2)
+    height = lerp(height, sea - 2.0, sink)
   }
   let mut h = height
   let max_h = self.height.to_double()
