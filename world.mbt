@@ -362,11 +362,11 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
   let ridge = ridged(wx * 0.0065, wz * 0.0065)
   let peaks = ridged(wx * 0.012, wz * 0.012)
   let mega = ridged(wx * 0.0008 + 2.5, wz * 0.0008 - 5.4)
-  let mega_mask = clamp01((mega - 0.6) / 0.25)
+  let mega_mask = clamp01((mega - 0.7) / 0.2)
   let mountain_chain = ridged(wx * 0.0019 + 7.4, wz * 0.0019 - 3.1)
-  let chain_mask = clamp01((mountain_chain - 0.45) / 0.4)
-  let cliff = ridged(wx * 0.02, wz * 0.02)
-  let cliff_mask = clamp01((cliff - 0.72) / 0.22)
+  let chain_mask = clamp01((mountain_chain - 0.55) / 0.35)
+  let cliff = ridged(wx * 0.017, wz * 0.017)
+  let cliff_mask = clamp01((cliff - 0.78) / 0.18)
   let cliff_strength = cliff_mask * cliff_mask
   let coast = clamp01((0.42 - land) / 0.24)
   let coast_noise = fbm(wx * 0.022 + 19.2, wz * 0.022 - 7.1)
@@ -395,14 +395,15 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
     (detail - 0.5) * 2.5 * detail_scale
   let mut height = lerp(base_ocean, land_height, land)
   height = height +
-    chain_mask * 26.0 * relief_scale +
-    chain_mask * peaks * 18.0 * relief_scale
+    chain_mask * 20.0 * relief_scale +
+    chain_mask * peaks * 14.0 * relief_scale
   height = height +
-    mega_mask * 60.0 * relief_scale +
-    mega_mask * peaks * 24.0 * relief_scale
-  height = height +
-    ridge * 8.0 * detail_scale +
-    cliff_strength * 6.0 * detail_scale
+    mega_mask * 44.0 * relief_scale +
+    mega_mask * peaks * 18.0 * relief_scale
+  height = height + ridge * 7.0 * detail_scale
+  if cliff_strength > 0.0 {
+    height = lerp(height, land_height, cliff_strength * 0.45)
+  }
   height = height - basin_mask * 14.0 * relief_scale
   if karst_mask > 0.45 && land > 0.3 {
     height = terrace(height + karst_mask * 6.0 * detail_scale, 2.8)
