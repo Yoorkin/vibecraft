@@ -229,126 +229,6 @@ fn World::chunk_index(self : World, lx : Int, y : Int, lz : Int) -> Int {
 ///|
 
 ///|
-fn World::sample_block(self : World, x : Int, y : Int, z : Int) -> Block {
-  let info = self.column_info(x, z)
-  let h = info.height
-  let bedrock_y = bedrock_height(self, x, z, info)
-  let (top_block, mid_block) = surface_blocks(self, x, z, info)
-  let base_block = if y <= bedrock_y {
-    Block::Bedrock
-  } else if y < h - 4 {
-    Block::Stone
-  } else if y < h - 1 {
-    mid_block
-  } else if y < h {
-    top_block
-  } else if y < self.sea_level {
-    Block::Water
-  } else {
-    Block::Air
-  }
-  if y > self.sea_level {
-    let check_leaves = block_is_air(base_block)
-    for dz = -2; dz <= 2; dz = dz + 1 {
-      let bz = z + dz
-      for dx = -2; dx <= 2; dx = dx + 1 {
-        let bx = x + dx
-        let base_info = self.column_info(bx, bz)
-        let bh = base_info.height
-        if bh <= self.sea_level + 1 {
-          continue
-        }
-        let (base_top, _) = surface_blocks(self, bx, bz, base_info)
-        let can_tree = match base_top {
-          Block::Grass => true
-          _ => false
-        }
-        if !can_tree || base_info.ridge >= 0.75 {
-          continue
-        }
-        let forest = fbm(
-          bx.to_double() * 0.01 + 2.7,
-          bz.to_double() * 0.01 - 4.1,
-        )
-        let radius_bias = if forest > 0.65 {
-          -1
-        } else if forest < 0.35 {
-          1
-        } else {
-          0
-        }
-        let tree_radius = match base_info.biome {
-          Biome::Forest => 2
-          Biome::Plains => 3
-          Biome::Hills => 3
-          Biome::Mountains => 4
-          Biome::Ocean => 4
-          Biome::Desert => 4
-          Biome::Mesa => 4
-          Biome::River => 4
-          Biome::Snow => 4
-          Biome::Karst => 4
-        }
-        let tree_radius = if tree_radius + radius_bias < 2 {
-          2
-        } else {
-          tree_radius + radius_bias
-        }
-        let (is_peak, tree_noise) = tree_peak(bx, bz, tree_radius)
-        let mut tree_threshold = match base_info.biome {
-          Biome::Ocean => 1.2
-          Biome::Forest => 0.7
-          Biome::Plains => 0.78
-          Biome::Hills => 0.8
-          Biome::Mountains => 0.88
-          Biome::Desert => 1.1
-          Biome::Mesa => 1.05
-          Biome::River => 1.2
-          Biome::Snow => 1.2
-          Biome::Karst => 1.0
-        }
-        let density_boost = (forest - 0.5) * 0.16
-        tree_threshold = tree_threshold - base_info.moist * 0.08 - density_boost
-        let lx = mod_floor(bx, self.chunk_size)
-        let lz = mod_floor(bz, self.chunk_size)
-        if !is_peak ||
-          tree_noise <= tree_threshold ||
-          lx < 2 ||
-          lz < 2 ||
-          lx > self.chunk_size - 3 ||
-          lz > self.chunk_size - 3 {
-          continue
-        }
-        let trunk = 3 + (tree_noise * 4.0 + base_info.moist * 2.0).to_int()
-        if x == bx && z == bz && y >= bh && y < bh + trunk {
-          return Block::Wood
-        }
-        if check_leaves {
-          let rel_x = x - bx
-          let rel_z = z - bz
-          let leaf_start = bh + trunk - 2
-          for dy = -2; dy <= 1; dy = dy + 1 {
-            let yy = leaf_start + dy
-            if yy == y {
-              let dist = rel_x * rel_x + rel_z * rel_z + dy * dy
-              if dist <= 6 {
-                return Block::Leaves
-              }
-            }
-          }
-          let top_y = bh + trunk
-          if y == top_y {
-            let dist2 = rel_x * rel_x + rel_z * rel_z
-            if dist2 <= 2 {
-              return Block::Leaves
-            }
-          }
-        }
-      }
-    }
-  }
-  base_block
-}
 
 ///|
 fn World::prune_chunks(
@@ -387,7 +267,13 @@ fn World::get(self : World, x : Int, y : Int, z : Int) -> Block {
     let key = chunk_key_3(cx, cy, cz)
     match self.chunks.get(key) {
       Some(chunk) => chunk.blocks[self.chunk_index(lx, ly, lz)]
-      None => self.sample_block(x, y, z)
+      None => {
+        let chunk = generate_chunk_section(self, cx, cy, cz)
+        let blocks = chunk.blocks
+        self.chunks.set(key, chunk)
+        self.chunk_keys.push(key)
+        blocks[self.chunk_index(lx, ly, lz)]
+      }
     }
   }
 }
