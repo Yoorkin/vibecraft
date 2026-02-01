@@ -840,6 +840,31 @@ fn chunk_detail_bounds(game : Game, cx : Int, cz : Int) -> (Int, Int) {
 }
 
 ///|
+fn build_chunk_keep_set(
+  game : Game,
+  coords : Array[(Int, Int)],
+) -> @hashmap.HashMap[String, Bool] {
+  let cache_dist = game.detail_distance + 1
+  let keep = @hashmap.new(capacity=coords.length() * 6 + 1)
+  for i = 0; i < coords.length(); i = i + 1 {
+    let (cx, cz) = coords[i]
+    let dx = (cx - game.current_cx).abs()
+    let dz = (cz - game.current_cz).abs()
+    if dx <= cache_dist && dz <= cache_dist {
+      let (y0, y1) = chunk_detail_bounds(game, cx, cz)
+      let cy0 = div_floor(y0, game.world.section_height)
+      let cy1 = div_floor(y1 - 1, game.world.section_height)
+      let mut cy = cy0
+      while cy <= cy1 {
+        keep.set(chunk_key_3(cx, cy, cz), true)
+        cy = cy + 1
+      }
+    }
+  }
+  keep
+}
+
+///|
 fn enqueue_surface(game : Game, cx : Int, cz : Int) -> Unit {
   let key = chunk_key(cx, cz)
   match game.queued_surface.get(key) {
@@ -995,6 +1020,8 @@ fn refresh_visible_chunks(game : Game) -> Unit {
         enqueue_detail(game, cx, cz)
       }
     }
+    let keep = build_chunk_keep_set(game, coords)
+    game.world.prune_chunks(keep)
     return
   }
   let visible_set = @hashmap.new(capacity=coords.length() * 2 + 1)
@@ -1092,6 +1119,8 @@ fn refresh_visible_chunks(game : Game) -> Unit {
       None => ()
     }
   }
+  let keep = build_chunk_keep_set(game, coords)
+  game.world.prune_chunks(keep)
 }
 
 ///|

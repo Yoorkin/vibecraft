@@ -42,6 +42,7 @@ priv struct ColumnInfo {
 ///|
 priv struct Chunk {
   blocks : Array[Block]
+  modified : Bool
 }
 
 ///|
@@ -51,6 +52,7 @@ priv struct World {
   section_height : Int
   sea_level : Int
   chunks : @hashmap.HashMap[String, Chunk]
+  mut chunk_keys : Array[String]
 }
 
 ///|
@@ -62,6 +64,7 @@ fn World::new(height : Int, chunk_size : Int, section_height : Int) -> World {
     section_height,
     sea_level,
     chunks: @hashmap.new(capacity=64),
+    chunk_keys: [],
   }
 }
 
@@ -236,9 +239,31 @@ fn World::chunk_blocks(
     None => {
       let chunk = generate_chunk_section(self, cx, cy, cz)
       self.chunks.set(key, chunk)
+      self.chunk_keys.push(key)
       chunk.blocks
     }
   }
+}
+
+///|
+fn World::prune_chunks(
+  self : World,
+  keep : @hashmap.HashMap[String, Bool],
+) -> Unit {
+  let next_keys : Array[String] = []
+  for i = 0; i < self.chunk_keys.length(); i = i + 1 {
+    let key = self.chunk_keys[i]
+    match self.chunks.get(key) {
+      Some(chunk) =>
+        if chunk.modified || keep.contains(key) {
+          next_keys.push(key)
+        } else {
+          self.chunks.remove(key)
+        }
+      None => ()
+    }
+  }
+  self.chunk_keys = next_keys
 }
 
 ///|
@@ -327,8 +352,10 @@ fn World::set(self : World, x : Int, y : Int, z : Int, block : Block) -> Bool {
     let lx = mod_floor(x, self.chunk_size)
     let lz = mod_floor(z, self.chunk_size)
     let ly = mod_floor(y, self.section_height)
+    let key = chunk_key_3(cx, cy, cz)
     let blocks = self.chunk_blocks(cx, cy, cz)
     blocks[self.chunk_index(lx, ly, lz)] = block
+    self.chunks.set(key, { blocks, modified: true })
     true
   }
 }
@@ -745,7 +772,7 @@ fn generate_chunk_section(world : World, cx : Int, cy : Int, cz : Int) -> Chunk 
       }
     }
   }
-  { blocks, }
+  { blocks, modified: false }
 }
 
 ///|
