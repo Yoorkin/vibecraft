@@ -56,6 +56,19 @@ priv struct Particle {
 ///|
 fn find_spawn(world : World) -> Vec3 {
   let sea = world.sea_level
+  let random_radius = 4096.0
+  let tries = 4000
+  for i = 0; i < tries; i = i + 1 {
+    let rx = (hash2(i * 37 + 11, i * 17 - 5) * 2.0 - 1.0) * random_radius
+    let rz = (hash2(i * 29 - 23, i * 41 + 9) * 2.0 - 1.0) * random_radius
+    let x = rx.floor().to_int()
+    let z = rz.floor().to_int()
+    let h = world.height_at(x, z)
+    if h > sea + 1 {
+      let y = h.to_double() + 2.0
+      return vec3(x.to_double(), y, z.to_double())
+    }
+  }
   let max_radius = 256
   let mut best_x = 0
   let mut best_z = 0
