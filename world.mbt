@@ -416,14 +416,16 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
   let river_mask = clamp01((river_shape - 0.78) / 0.12)
   let mut biome = biome_from(temp, moist, ridge, land)
   let sea = self.sea_level.to_double()
-  let macro_noise = fbm(wx * 0.00012 + 6.7, wz * 0.00012 - 8.9)
-  let macro_shift = (macro_noise * 2.0 - 1.0) * (self.height.to_double() * 0.08)
-  let base_ocean = sea - 32.0 * relief_scale + macro_shift * 0.4
-  let base_land = sea - 6.0 * relief_scale + macro_shift
+  let macro_base = fbm(wx * 0.00004 + 12.3, wz * 0.00004 - 9.4)
+  let macro_slope = fbm(wx * 0.000012 - 5.7, wz * 0.000012 + 3.9)
+  let macro_shift = (macro_base * 2.0 - 1.0) * (self.height.to_double() * 0.35) +
+    (macro_slope * 2.0 - 1.0) * (self.height.to_double() * 0.18)
+  let base_ocean = sea - 200.0 * relief_scale + macro_shift * 0.55
+  let base_land = sea - 140.0 * relief_scale + macro_shift
   let land_height = base_land +
     (continent - 0.5) * 18.0 * relief_scale +
-    (hills - 0.5) * 10.0 * detail_scale +
-    (detail - 0.5) * 2.5 * detail_scale
+    (hills - 0.5) * 12.0 * detail_scale +
+    (detail - 0.5) * 3.5 * detail_scale
   let mut height = lerp(base_ocean, land_height, land)
   height = height +
     chain_mask * 20.0 * relief_scale +
@@ -499,8 +501,8 @@ fn World::column_info(self : World, x : Int, z : Int) -> ColumnInfo {
     }
   }
   let lake = fbm(wx * 0.01 + 13.7, wz * 0.01 - 4.4)
-  if land > 0.2 && lake > 0.76 {
-    height = height - (lake - 0.76) * 14.0 * detail_scale
+  if land > 0.2 && lake > 0.72 {
+    height = height - (lake - 0.72) * 12.0 * detail_scale
   }
   let mut h = height.floor().to_int()
   if h < 4 {
