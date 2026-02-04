@@ -2,7 +2,7 @@
   "is-main": true,
   "import": [
     {
-      "path": "username/webcubes",
+      "path": "Yoorkin/vibecraft",
       "alias": "lib"
     }
   ],
