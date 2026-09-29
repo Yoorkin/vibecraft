@@ -13,7 +13,7 @@ extern "js" fn dom_create_canvas() -> JsValue =
   #| }
 
 ///|
-extern "js" fn dom_resize_canvas(canvas : JsValue) -> Array[Int] =
+extern "js" fn dom_resize_canvas_ffi(canvas : JsValue) -> FixedArray[Int] =
   #| (canvas) => {
   #|   const dpr = window.devicePixelRatio || 1;
   #|   const w = window.innerWidth || 800;
@@ -28,6 +28,10 @@ extern "js" fn dom_resize_canvas(canvas : JsValue) -> Array[Int] =
   #|   }
   #|   return [canvas.width, canvas.height];
   #| }
+
+fn dom_resize_canvas(canvas : JsValue) -> Array[Int] {
+  Array::from_fixed_array(dom_resize_canvas_ffi(canvas))
+}
 
 ///|
 extern "js" fn dom_request_animation_frame(cb : (Double) -> Unit) -> Int =
@@ -136,12 +140,16 @@ extern "js" fn input_consume_teleport() -> Bool =
   #| }
 
 ///|
-extern "js" fn input_consume_command() -> Array[Int] =
+extern "js" fn input_consume_command_ffi() -> FixedArray[Int] =
   #| () => {
   #|   const s = window.__moonbit_input;
   #|   if (!s || !Array.isArray(s.cmds) || s.cmds.length === 0) return [];
   #|   return s.cmds.shift();
   #| }
+
+fn input_consume_command() -> Array[Int] {
+  Array::from_fixed_array(input_consume_command_ffi())
+}
 
 ///|
 extern "js" fn dom_init_fly_toggle() -> Unit =
