@@ -260,13 +260,22 @@ extern "js" fn gl_uniform3f(
   #| (gl, location, x, y, z) => gl.uniform3f(location, x, y, z)
 
 ///|
-extern "js" fn gl_uniform_matrix4fv(
+extern "js" fn gl_uniform_matrix4fv_ffi(
+  gl : WebGL,
+  location : WebGLUniformLocation,
+  transpose : Bool,
+  data : FixedArray[Double],
+) -> Unit =
+  #| (gl, location, transpose, data) => gl.uniformMatrix4fv(location, transpose, new Float32Array(data))
+
+fn gl_uniform_matrix4fv(
   gl : WebGL,
   location : WebGLUniformLocation,
   transpose : Bool,
   data : Array[Double],
-) -> Unit =
-  #| (gl, location, transpose, data) => gl.uniformMatrix4fv(location, transpose, new Float32Array(data))
+) -> Unit {
+  gl_uniform_matrix4fv_ffi(gl, location, transpose, FixedArray::from_array(data))
+}
 
 ///|
 extern "js" fn gl_create_buffer(gl : WebGL) -> WebGLBuffer =
@@ -330,13 +339,22 @@ extern "js" fn gl_bind_buffer(
   #| (gl, target, buffer) => gl.bindBuffer(target, buffer)
 
 ///|
-extern "js" fn gl_buffer_data_f32(
+extern "js" fn gl_buffer_data_f32_ffi(
+  gl : WebGL,
+  target : Int,
+  data : FixedArray[Double],
+  usage : Int,
+) -> Unit =
+  #| (gl, target, data, usage) => gl.bufferData(target, new Float32Array(data), usage)
+
+fn gl_buffer_data_f32(
   gl : WebGL,
   target : Int,
   data : Array[Double],
   usage : Int,
-) -> Unit =
-  #| (gl, target, data, usage) => gl.bufferData(target, new Float32Array(data), usage)
+) -> Unit {
+  gl_buffer_data_f32_ffi(gl, target, FixedArray::from_array(data), usage)
+}
 
 ///|
 extern "js" fn gl_vertex_attrib_pointer(
